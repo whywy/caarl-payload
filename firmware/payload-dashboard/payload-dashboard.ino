@@ -59,14 +59,25 @@ bool imuReadRaw(int16_t v[7]) {  // ax ay az temp gx gy gz
 }
 
 // ---------- Receiver: measure pulse widths with interrupts ----------
-volatile uint32_t rcRise[4], rcWidth[4], rcSeen[4];
+// GPIO34-39 have no internal pull resistors, so with the ER4 unplugged the pins float and
+// pick up noise that can look like a pulse. A real receiver sends a steady train: one
+// 700-2400 us pulse every 2.5-30 ms (50-400 Hz). A channel is only reported after
+// RC_GOOD_NEEDED such pulses in a row; any odd edge starts the count over.
+constexpr uint8_t RC_GOOD_NEEDED = 3;
+volatile uint32_t rcRise[4], rcPeriod[4], rcWidth[4], rcSeen[4];
+volatile uint8_t rcGood[4];
 void IRAM_ATTR rcIsr(void *arg) {
   int i = (int)(intptr_t)arg;
   uint32_t now = micros();
-  if (digitalRead(RC_PINS[i])) rcRise[i] = now;
-  else {
-    uint32_t w = now - rcRise[i];
-    if (w > 700 && w < 2400) { rcWidth[i] = w; rcSeen[i] = now; }  // ignore noise
+  if (digitalRead(RC_PINS[i])) {
+    rcPeriod[i] = now - rcRise[i];  // time since the previous pulse started
+    rcRise[i] = now;
+  } else {
+    uint32_t w = now - rcRise[i], p = rcPeriod[i];
+    bool valid = w > 700 && w < 2400 && p >= 2500 && p <= 30000 && w < p;
+    if (!valid) { rcGood[i] = 0; return; }
+    if (rcGood[i] < RC_GOOD_NEEDED) rcGood[i]++;
+    if (rcGood[i] >= RC_GOOD_NEEDED) { rcWidth[i] = w; rcSeen[i] = now; }
   }
 }
 
