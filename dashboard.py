@@ -349,10 +349,17 @@ def main():
     ap.add_argument("--no-browser", action="store_true", help="don't open a browser")
     args = ap.parse_args()
 
-    board = Board(args.port)
-    server = ThreadingHTTPServer(("127.0.0.1", args.http), Handler)
-    server.daemon_threads = True
     url = f"http://127.0.0.1:{args.http}"
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", args.http), Handler)
+    except OSError:
+        print(f"The dashboard is already running in another terminal. Open {url} in your browser,\n"
+              f"or stop the other copy (Ctrl+C in its terminal) and try again.")
+        if not args.no_browser:
+            webbrowser.open(url)
+        sys.exit(1)
+    server.daemon_threads = True
+    board = Board(args.port)
     print(f"CAARL dashboard running at {url}  (press Ctrl+C to stop)")
     if not args.no_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
