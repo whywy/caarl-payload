@@ -1,6 +1,6 @@
 # CAARL Payload Software
 
-2026-11-08 · **Prototype 1**: ground dashboard and SD-card logger for the CAARL avionics payload
+2026-11-08 · **Prototype 1**: ground dashboard, SD-card logger and 3D-printed case for the CAARL avionics payload
 (Inland ESP32, MPU-6050 clone IMU, BMP388 barometer, NEO-M8P-2 GPS, HW-125 microSD, RadioMaster ER4).
 
 This is the first version of the payload's software. Later versions (flight logic, parachute steering)
@@ -30,7 +30,7 @@ build on it.
 **If it says "Connected · no data (wrong firmware?)"**: the payload is running other firmware. Upload this one.
 
 **Where things are:** this project is in `~/Projects/caarl-payload`. There's also a shortcut to it at
-`~/School/Avionics/payload-dashboard`.
+`~/School/Avionics/payload-dashboard`, and the case files also appear at `~/School/Avionics/case`.
 
 ---
 
@@ -43,6 +43,7 @@ build on it.
 | `web/index.html` | The dashboard page itself |
 | `start-dashboard.sh` | Double-click launcher for `dashboard.py` |
 | `downloads/` | Copies of files you open or save from the SD card (not uploaded to GitHub) |
+| `hardware/case/` | 3D-printable case (sled + cover) that slides into the payload bay tube. Print, assembly and edit steps in its own README |
 
 ## What's on the page
 
