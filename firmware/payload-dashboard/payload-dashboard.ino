@@ -4,7 +4,9 @@
 //
 // Recording starts by itself at power-up (AUTO_LOG below) into a new /LOGnnn.CSV,
 // so it works with no PC attached (rocket, battery or Flipper power). The PC can
-// still stop and start recordings with LOG STOP / LOG START.
+// still stop and start recordings with LOG STOP / LOG START. If the card isn't
+// ready at power-up it keeps trying for 30 s. An LED on GPIO13 shows the state
+// (see LED_PIN below).
 //
 // Board: "ESP32 Dev Module". Serial: 921600 baud (the Serial Monitor must be set
 // to 921600 too, or it shows garbage).
@@ -27,8 +29,14 @@
 #include <Adafruit_BMP3XX.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 
-const char *FW_VERSION = "1.1";
+const char *FW_VERSION = "1.2";
 const bool AUTO_LOG = true;      // start recording at power-up; set false for PC-only recording
+const uint32_t SD_RETRY_MS = 2000, SD_RETRY_FOR_MS = 30000;  // keep looking for the card for 30 s
+// Status LED. The Inland ESP32 board has only a power LED, so this is an external LED on the
+// perfboard: GPIO13 (hole V31) -> 330 ohm -> LED (red/green/yellow) -> GND (hole U31). ~3-5 mA.
+//   short flash every second = recording   fast blink = looking for the SD card
+//   solid on = problem (no SD card found, or a write failed)   off = not recording (stopped from the PC)
+const int LED_PIN = 13;
 const uint32_t BAUD = 921600;
 const int SDA_PIN = 21, SCL_PIN = 22, SD_CS = 5;
 const int RC_PINS[4] = {36, 39, 34, 35};
@@ -106,6 +114,7 @@ char logName[16] = "";
 uint32_t logRows = 0, logStartMs = 0, lastFlush = 0;
 char pendingMark[64] = "";
 char logError[64] = "";
+bool autoPending = false;  // auto-record still waiting for the SD card after power-up
 
 // ---------- Helpers ----------
 void sendOk(const char *cmd, const char *extra = "") {
@@ -166,12 +175,14 @@ void logStart() {
   logRows = 0;
   logStartMs = lastFlush = millis();
   logError[0] = 0;
+  autoPending = false;
   char extra[40];
   snprintf(extra, sizeof extra, ",\"file\":\"%s\"", logName);
   sendOk("LOG START", extra);
 }
 
 void logStop(const char *reason = nullptr) {
+  if (!reason) autoPending = false;  // a LOG STOP from the PC also cancels a pending auto-start
   if (!logging) { if (!reason) sendErr("LOG STOP", "not recording"); return; }
   logFile.close();
   logging = false;
@@ -400,17 +411,56 @@ void setup() {
   }
   sendInfo();
 
-  if (AUTO_LOG && haveSd) {
-    logStart();
-    strcpy(pendingMark, "auto start at power-up");  // marks the first row of the file
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
+  if (AUTO_LOG) {
+    if (haveSd) {
+      logStart();
+      strcpy(pendingMark, "auto start at power-up");  // marks the first row of the file
+    } else {
+      autoPending = true;  // keep trying in loop(): the card may need longer to power up
+    }
   }
+}
+
+// Power-up on a weak supply can leave the SD card not ready when setup() runs.
+// Keep trying for SD_RETRY_FOR_MS, then start the auto recording as soon as it answers.
+void retrySd(uint32_t now) {
+  static uint32_t lastTry = 0;
+  if (!autoPending) return;
+  if (now > SD_RETRY_FOR_MS) {
+    autoPending = false;
+    strcpy(logError, "no SD card found after power-up");
+    sendErr("LOG", logError);
+    return;
+  }
+  if (now - lastTry < SD_RETRY_MS) return;
+  lastTry = now;
+  SD.end();
+  haveSd = SD.begin(SD_CS);
+  if (haveSd) {
+    logStart();
+    if (logging) snprintf(pendingMark, sizeof pendingMark, "auto start - SD found %lus after power-up",
+                          (unsigned long)(now / 1000));
+  }
+}
+
+void updateLed(uint32_t now) {
+  bool on;
+  if (logging) on = now % 1000 < 100;          // short flash every second
+  else if (autoPending) on = now % 250 < 125;  // fast blink: looking for the SD card
+  else on = logError[0] != 0;                  // solid on: something went wrong
+  digitalWrite(LED_PIN, on);
 }
 
 void loop() {
   static uint32_t next = 0, count = 0;
   readCommands();
   uint32_t now = millis();
+  updateLed(now);
   if ((int32_t)(now - next) < 0) return;
+  retrySd(now);
   next = now + SAMPLE_MS;
 
   uint32_t start = millis();

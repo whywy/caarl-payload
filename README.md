@@ -106,7 +106,18 @@ They open straight in LibreOffice Calc or any spreadsheet.
 - **Recording starts by itself at power-up** (firmware 1.1+), into a new `LOGnnn.CSV` each time, so it records
   with no computer attached. The first row's `event` column says `auto start at power-up`. Every power-up makes a
   new file (USB bench sessions too), so delete old ones from the dashboard now and then. To turn this off, set
-  `AUTO_LOG = false` in the firmware.
+  `AUTO_LOG = false` in the firmware. If the SD card isn't ready at power-up (weak supply), it keeps trying for
+  30 s (firmware 1.2+).
+- **Status LED**, firmware 1.2+. The Inland ESP32 has no LED of its own to blink, so it's an added LED on the
+  perfboard: **GPIO13 (hole V31) → 330 Ω → LED (red, green or yellow; long leg toward the resistor) → GND
+  (hole U31)**. Blue and white LEDs need more than 3.3 V and stay dark or very dim.
+
+  | LED | Meaning |
+  |---|---|
+  | Short flash every second | Recording |
+  | Fast blink | Looking for the SD card (first 30 s after power-up) |
+  | Solid on | Problem: no SD card found, or writing to it failed |
+  | Off | Not recording (stopped from the dashboard) |
 - **Never connect USB while the board is powered from its 5 V input** (battery, Flipper, bench supply), unless
   you've confirmed the ESP32 board has a diode between USB and VIN.
 - The recording is saved to the card every second, so pulling the power loses at most about one second.
