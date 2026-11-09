@@ -1,0 +1,15 @@
+# Files copied from the SD card (flight/test data stays on this computer)
+downloads/
+
+# Python and build leftovers
+__pycache__/
+*.pyc
+build/
+
+# Secrets (none needed, but never commit these)
+.env
+*.key
+
+# Editor/OS junk
+.vscode/
+.DS_Store

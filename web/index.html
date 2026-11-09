@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAARL Payload</title>
+<style>
+:root {
+  --bg: #f3f4f6; --card: #ffffff; --ink: #111827; --muted: #6b7280; --line: #e5e7eb;
+  --accent: #2563eb; --good: #15803d; --good-bg: #dcfce7; --bad: #b91c1c; --bad-bg: #fee2e2;
+  --warn: #a16207; --warn-bg: #fef9c3; --rec: #dc2626;
+  --x: #e11d48; --y: #16a34a; --z: #2563eb; --one: #7c3aed;
+  --sky: #60a5fa; --ground: #a16207;
+  --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0f17; --card: #141a24; --ink: #e5e7eb; --muted: #94a3b8; --line: #263041;
+    --accent: #60a5fa; --good: #4ade80; --good-bg: #14532d55; --bad: #f87171; --bad-bg: #7f1d1d55;
+    --warn: #facc15; --warn-bg: #713f1255; --rec: #ef4444;
+    --x: #fb7185; --y: #4ade80; --z: #60a5fa; --one: #c084fc;
+    --sky: #1d4ed8; --ground: #78350f;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+  padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+.brand { font-weight: 700; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+.brand small { font-weight: 400; color: var(--muted); font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 3px 10px; border-radius: 999px; font-size: 13px; background: var(--line); color: var(--muted); white-space: nowrap; }
+.chip.good { background: var(--good-bg); color: var(--good); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+main { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; padding: 16px 20px 40px; max-width: 1500px; margin: 0 auto; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.card.wide { grid-column: span 2; }
+@media (max-width: 760px) { .card.wide { grid-column: span 1; } main { padding: 12px 16px; } }
+.card h2 { margin: 0 0 12px; font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.big { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.big small { font-size: 16px; font-weight: 500; color: var(--muted); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-variant-numeric: tabular-nums; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; text-align: right; font-family: var(--mono); font-size: 14px; }
+.row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.axes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+.axis { background: var(--bg); border-radius: 8px; padding: 6px 8px; text-align: center; }
+.axis b { display: block; font-size: 12px; }
+.axis span { font-family: var(--mono); font-size: 15px; }
+.lx { color: var(--x); } .ly { color: var(--y); } .lz { color: var(--z); }
+canvas { width: 100%; display: block; }
+canvas.chart { height: 150px; }
+button { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.rec { background: var(--rec); color: #fff; border-color: var(--rec); font-weight: 600; padding: 9px 18px; font-size: 15px; }
+button.small { padding: 3px 9px; font-size: 13px; }
+button.danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
+input[type=text] { font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink); min-width: 0; flex: 1; }
+.hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+.bar { position: relative; height: 22px; background: var(--bg); border-radius: 6px; overflow: hidden; margin: 4px 0 10px; }
+.bar i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--accent); border-radius: 6px; transition: width .1s; }
+.bar::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: var(--muted); opacity: .5; }
+.bar-label { display: flex; justify-content: space-between; font-size: 13px; }
+.bar-label span:last-child { font-family: var(--mono); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.dot.on { background: var(--rec); animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; font-size: 13px; }
+td.num { font-family: var(--mono); text-align: right; }
+td.acts { text-align: right; white-space: nowrap; }
+td.acts button { margin-left: 4px; }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 760px) { .split { grid-template-columns: 1fr; } }
+.legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 3px; margin-right: 4px; vertical-align: middle; background: currentColor; }
+.progress { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.progress i { display: block; height: 100%; width: 0; background: var(--accent); }
+.hidden { display: none !important; }
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 18px; border-radius: 10px;
+  background: var(--ink); color: var(--card); font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; max-width: 90vw; }
+#toast.show { opacity: 1; }
+#offline { background: var(--warn-bg); color: var(--warn); padding: 10px 20px; text-align: center; font-size: 14px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.stat { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+.stat b { display: block; font-size: 12px; color: var(--muted); font-weight: 500; }
+.stat span { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+select { font: inherit; font-size: 14px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">🚀 CAARL Payload <small>live dashboard</small></div>
+  <div class="chips">
+    <span class="chip bad" id="c-conn">Not connected</span>
+    <span class="chip" id="c-imu">IMU</span>
+    <span class="chip" id="c-baro">Barometer</span>
+    <span class="chip" id="c-gps">GPS</span>
+    <span class="chip" id="c-sd">SD card</span>
+    <span class="chip" id="c-rc">Receiver</span>
+  </div>
+</header>
+<div id="offline">Looking for the payload… Plug in the USB cable, and make sure the Arduino Serial Monitor is closed.</div>
+
+<main>
+  <!-- Orientation -->
+  <section class="card">
+    <h2>Orientation <button class="small" id="btn-cal" title="Keep the board completely still">Calibrate gyro</button></h2>
+    <canvas id="horizon" style="height:180px"></canvas>
+    <div class="row" style="justify-content:space-around;margin-top:10px">
+      <div><div class="hint" style="margin:0">Pitch</div><div class="big" id="pitch">–</div></div>
+      <div><div class="hint" style="margin:0">Roll</div><div class="big" id="roll">–</div></div>
+      <div><div class="hint" style="margin:0">Total</div><div class="big" id="gtot">–</div></div>
+    </div>
+    <p class="hint">Tilt the board to see it move. Angles are worked out from gravity, in the board's own axes.</p>
+  </section>
+
+  <!-- Motion charts -->
+  <section class="card wide">
+    <h2>Motion <span class="legend"><span class="lx">X</span><span class="ly">Y</span><span class="lz">Z</span></span></h2>
+    <div class="split">
+      <div>
+        <div class="row" style="justify-content:space-between"><b>Acceleration</b><span class="hint" style="margin:0">g</span></div>
+        <div class="axes"><div class="axis"><b class="lx">X</b><span id="ax">–</span></div><div class="axis"><b class="ly">Y</b><span id="ay">–</span></div><div class="axis"><b class="lz">Z</b><span id="az">–</span></div></div>
+        <canvas class="chart" id="ch-acc"></canvas>
+      </div>
+      <div>
+        <div class="row" style="justify-content:space-between"><b>Rotation rate</b><span class="hint" style="margin:0">°/s</span></div>
+        <div class="axes"><div class="axis"><b class="lx">X</b><span id="gx">–</span></div><div class="axis"><b class="ly">Y</b><span id="gy">–</span></div><div class="axis"><b class="lz">Z</b><span id="gz">–</span></div></div>
+        <canvas class="chart" id="ch-gyr"></canvas>
+      </div>
+    </div>
+    <p class="hint">Last 30 seconds. Sitting still, acceleration should total about 1 g (that's gravity) and rotation should sit near 0.</p>
+  </section>
+
+  <!-- Barometer -->
+  <section class="card">
+    <h2>Altitude <button class="small" id="btn-zero">Set zero here</button></h2>
+    <div class="big" id="alt">– <small>m</small></div>
+    <div class="hint" style="margin:2px 0 10px" id="alt-note">above the spot where you pressed "Set zero"</div>
+    <canvas class="chart" id="ch-alt"></canvas>
+    <dl class="kv" style="margin-top:12px">
+      <dt>Pressure</dt><dd id="pres">–</dd>
+      <dt>Barometer temperature</dt><dd id="btemp">–</dd>
+      <dt>IMU temperature</dt><dd id="itemp">–</dd>
+      <dt>Altitude above sea level (estimate)</dt><dd id="altabs">–</dd>
+    </dl>
+  </section>
+
+  <!-- GPS -->
+  <section class="card">
+    <h2>GPS <a id="map" class="hidden" target="_blank" rel="noopener" style="font-size:13px;text-transform:none;letter-spacing:0">Open map ↗</a></h2>
+    <div class="big" id="fix">–</div>
+    <div class="hint" style="margin:2px 0 12px" id="fix-note"></div>
+    <dl class="kv">
+      <dt>Satellites</dt><dd id="sats">–</dd>
+      <dt>Latitude</dt><dd id="lat">–</dd>
+      <dt>Longitude</dt><dd id="lon">–</dd>
+      <dt>GPS altitude</dt><dd id="galt">–</dd>
+      <dt>Ground speed</dt><dd id="spd">–</dd>
+      <dt>Position accuracy</dt><dd id="hacc">–</dd>
+      <dt>Time (UTC)</dt><dd id="utc">–</dd>
+    </dl>
+  </section>
+
+  <!-- Receiver -->
+  <section class="card">
+    <h2>Receiver (ER4)</h2>
+    <div id="rc"></div>
+    <p class="hint" id="rc-note">Each bar is a pulse from 1000 to 2000 µs. The middle line is 1500 µs, which is "stop" for the parachute winches.</p>
+  </section>
+
+  <!-- SD card -->
+  <section class="card wide">
+    <h2>SD card <button class="small" id="btn-refresh">Refresh list</button></h2>
+    <div class="split">
+      <div>
+        <div class="row">
+          <button class="rec" id="btn-rec">● Start recording</button>
+          <div><span class="dot" id="rec-dot"></span> <span id="rec-state">Not recording</span></div>
+        </div>
+        <dl class="kv" style="margin-top:14px">
+          <dt>File</dt><dd id="rec-file">–</dd>
+          <dt>Time recorded</dt><dd id="rec-time">–</dd>
+          <dt>Rows</dt><dd id="rec-rows">–</dd>
+          <dt>Size</dt><dd id="rec-size">–</dd>
+          <dt>Card</dt><dd id="card">–</dd>
+        </dl>
+        <div class="row" style="margin-top:14px;flex-wrap:nowrap">
+          <input type="text" id="mark-text" maxlength="60" placeholder="Note, e.g. 'lifted board'">
+          <button id="btn-mark" disabled>Add note</button>
+        </div>
+        <p class="hint">Recording saves 20 readings a second to a new LOGnnn.CSV file. Notes go into the "event" column so you can find moments later.</p>
+      </div>
+      <div>
+        <table>
+          <thead><tr><th>File</th><th style="text-align:right">Size</th><th></th></tr></thead>
+          <tbody id="files"><tr><td colspan="3" class="hint">Connect the payload to see its files.</td></tr></tbody>
+        </table>
+        <div class="progress hidden" id="dl-progress"><i></i></div>
+        <p class="hint" id="dl-note">"Open" reads a file back from the card and plots it below. Copies are also saved to the <code>downloads</code> folder next to dashboard.py.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- File viewer -->
+  <section class="card wide hidden" id="viewer">
+    <h2><span id="v-title">File</span>
+      <span class="row" style="gap:8px">
+        <button class="small" id="v-save">Save to computer</button>
+        <button class="small" id="v-close">Close</button>
+      </span>
+    </h2>
+    <div class="stats" id="v-stats"></div>
+    <div class="row" style="margin-bottom:8px">
+      <label for="v-col">Plot</label> <select id="v-col"></select>
+      <span class="hint" style="margin:0">against time (seconds)</span>
+    </div>
+    <canvas class="chart" id="ch-file" style="height:240px"></canvas>
+    <div id="v-events"></div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// ---------- tiny line chart ----------
+class Chart {
+  constructor(canvas, colors, opts = {}) {
+    this.c = canvas; this.colors = colors; this.span = opts.span || 30;
+    this.minRange = opts.minRange || 0.1; this.data = []; this.dirty = true; this.fixedX = false;
+  }
+  push(t, vals) {
+    this.data.push([t, ...vals]);
+    while (this.data.length && t - this.data[0][0] > this.span) this.data.shift();
+    this.dirty = true;
+  }
+  setAll(rows) { this.data = rows; this.fixedX = true; this.dirty = true; }
+  clear() { this.data = []; this.dirty = true; }
+  draw() {
+    if (!this.dirty) return; this.dirty = false;
+    const c = this.c, dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = c.clientHeight;
+    if (!w) return;
+    if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+    const L = 44, R = 6, T = 6, B = 18, pw = w - L - R, ph = h - T - B;
+    g.font = "11px system-ui"; g.fillStyle = css("--muted"); g.strokeStyle = css("--line"); g.lineWidth = 1;
+    if (this.data.length < 2) { g.fillText("waiting for data…", L + 6, T + ph / 2); return; }
+    let lo = Infinity, hi = -Infinity;
+    for (const r of this.data) for (let i = 1; i < r.length; i++) if (Number.isFinite(r[i])) { lo = Math.min(lo, r[i]); hi = Math.max(hi, r[i]); }
+    if (!Number.isFinite(lo)) return;
+    if (hi - lo < this.minRange) { const m = (hi + lo) / 2; lo = m - this.minRange / 2; hi = m + this.minRange / 2; }
+    const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    const t1 = this.data[this.data.length - 1][0];
+    const t0 = this.fixedX ? this.data[0][0] : t1 - this.span;
+    const X = t => L + (t - t0) / (t1 - t0 || 1) * pw, Y = v => T + (hi - v) / (hi - lo) * ph;
+    for (let i = 0; i <= 4; i++) {
+      const v = lo + (hi - lo) * i / 4, y = Y(v);
+      g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+      g.fillText(fmtAxis(v, hi - lo), 2, y + 4);
+    }
+    g.fillText(this.fixedX ? `${t0.toFixed(0)} s` : `-${this.span} s`, L, h - 4);
+    const end = this.fixedX ? `${t1.toFixed(0)} s` : "now"; g.fillText(end, w - R - g.measureText(end).width, h - 4);
+    g.lineWidth = 1.6; g.lineJoin = "round";
+    const step = Math.max(1, Math.floor(this.data.length / (pw * 1.5)));
+    for (let s = 0; s < this.colors.length; s++) {
+      g.strokeStyle = css(this.colors[s]); g.beginPath(); let pen = false;
+      for (let i = 0; i < this.data.length; i += step) {
+        const r = this.data[i], v = r[s + 1];
+        if (!Number.isFinite(v)) { pen = false; continue; }
+        const x = X(r[0]), y = Y(v);
+        if (pen) g.lineTo(x, y); else { g.moveTo(x, y); pen = true; }
+      }
+      g.stroke();
+    }
+  }
+}
+function fmtAxis(v, range) { const d = range < 1 ? 2 : range < 10 ? 1 : 0; return v.toFixed(d); }
+
+// ---------- artificial horizon ----------
+function drawHorizon(pitch, roll) {
+  const c = $("horizon"), dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const r = Math.min(w, h) / 2 - 4, cx = w / 2, cy = h / 2;
+  g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip();
+  g.translate(cx, cy); g.rotate(-roll * Math.PI / 180);
+  const off = Math.max(-r, Math.min(r, pitch / 90 * r));
+  g.fillStyle = css("--sky"); g.fillRect(-2 * r, -2 * r, 4 * r, 2 * r + off);
+  g.fillStyle = css("--ground"); g.fillRect(-2 * r, off, 4 * r, 2 * r);
+  g.strokeStyle = "#fff"; g.lineWidth = 2; g.beginPath(); g.moveTo(-2 * r, off); g.lineTo(2 * r, off); g.stroke();
+  g.lineWidth = 1; g.globalAlpha = .7;
+  for (const p of [-30, -15, 15, 30]) { const y = off - p / 90 * r; g.beginPath(); g.moveTo(-r * .25, y); g.lineTo(r * .25, y); g.stroke(); }
+  g.restore();
+  g.strokeStyle = "#facc15"; g.lineWidth = 3; g.beginPath();
+  g.moveTo(cx - r * .55, cy); g.lineTo(cx - r * .18, cy); g.lineTo(cx - r * .1, cy + 8);
+  g.moveTo(cx + r * .55, cy); g.lineTo(cx + r * .18, cy); g.lineTo(cx + r * .1, cy + 8); g.stroke();
+  g.fillStyle = "#facc15"; g.beginPath(); g.arc(cx, cy, 3, 0, 7); g.fill();
+  g.strokeStyle = css("--line"); g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
+}
+
+// ---------- helpers ----------
+function toast(msg, ms = 3500) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("show"), ms); }
+function bytes(n) { if (n < 1024) return n + " B"; if (n < 1048576) return (n / 1024).toFixed(1) + " KB"; if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB"; return (n / 1073741824).toFixed(1) + " GB"; }
+function dur(s) { s = Math.round(s); const m = Math.floor(s / 60); return m ? `${m} min ${s % 60} s` : `${s} s`; }
+function setChip(id, state, text) { const e = $(id); e.className = "chip " + (state || ""); if (text) e.textContent = text; }
+const f = (v, d = 2) => Number.isFinite(v) ? v.toFixed(d) : "–";
+async function cmd(c) {
+  try {
+    const r = await fetch("/api/cmd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd: c }) });
+    const j = await r.json();
+    if (j.type === "err") toast("⚠ " + j.msg);
+    return j;
+  } catch (e) { toast("⚠ The dashboard program isn't running."); return { type: "err" }; }
+}
+
+// ---------- live state ----------
+const charts = {
+  acc: new Chart($("ch-acc"), ["--x", "--y", "--z"], { minRange: 0.2 }),
+  gyr: new Chart($("ch-gyr"), ["--x", "--y", "--z"], { minRange: 4 }),
+  alt: new Chart($("ch-alt"), ["--one"], { minRange: 0.5 }),
+  file: new Chart($("ch-file"), ["--accent"], {}),
+};
+let connected = false, connPort = "", info = null, last = null, recording = false, lastSeen = 0;
+let zeroAlt = null, altFilt = null;
+try { const z = parseFloat(localStorage.getItem("caarl-zero")); if (Number.isFinite(z)) zeroAlt = z; } catch (e) {}
+
+function onConn(m) {
+  connected = m.connected; connPort = m.port || "";
+  setChip("c-conn", connected ? "good" : "bad", connected ? "Connected · " + m.port : "Not connected");
+  $("offline").classList.toggle("hidden", connected);
+  if (!connected) { info = null; for (const id of ["c-imu", "c-baro", "c-gps", "c-sd", "c-rc"]) setChip(id, ""); }
+}
+function onInfo(m) {
+  info = m;
+  setChip("c-imu", m.imu ? "good" : "bad", m.imu ? "IMU ✓" : "IMU missing");
+  setChip("c-baro", m.baro ? "good" : "bad", m.baro ? "Barometer ✓" : "Barometer missing");
+  setChip("c-gps", m.gps ? "good" : "bad", m.gps ? "GPS ✓" : "GPS missing");
+  setChip("c-sd", m.sd ? "good" : "bad", m.sd ? "SD card ✓" : "No SD card");
+  $("card").textContent = m.sd ? `${bytes(m.sdUsed)} used of ${bytes(m.sdTotal)}` : "no card";
+  if (m.sd) refreshFiles();
+}
+
+function onData(d) {
+  if (connected && Date.now() - lastSeen > 2000) setChip("c-conn", "good", "Connected · " + connPort);
+  last = d; lastSeen = Date.now();
+  const t = d.t / 1000;
+  if (d.a) {
+    const [ax, ay, az] = d.a, [gx, gy, gz] = d.g;
+    $("ax").textContent = f(ax); $("ay").textContent = f(ay); $("az").textContent = f(az);
+    $("gx").textContent = f(gx, 1); $("gy").textContent = f(gy, 1); $("gz").textContent = f(gz, 1);
+    charts.acc.push(t, d.a); charts.gyr.push(t, d.g);
+    const pitch = Math.atan2(-ax, Math.hypot(ay, az)) * 180 / Math.PI;
+    const roll = Math.atan2(ay, az) * 180 / Math.PI;
+    $("pitch").textContent = pitch.toFixed(0) + "°"; $("roll").textContent = roll.toFixed(0) + "°";
+    $("gtot").textContent = Math.hypot(ax, ay, az).toFixed(2) + " g";
+    drawHorizon(pitch, roll);
+    $("itemp").textContent = f(d.it, 1) + " °C";
+  }
+  if (d.p !== undefined) {
+    altFilt = altFilt === null ? d.alt : altFilt * 0.7 + d.alt * 0.3;   // light smoothing for the display
+    if (zeroAlt === null) setZero();
+    const rel = altFilt - zeroAlt;
+    $("alt").innerHTML = `${rel.toFixed(2)} <small>m</small>`;
+    charts.alt.push(t, [rel]);
+    $("pres").textContent = (d.p / 100).toFixed(2) + " hPa";
+    $("btemp").textContent = f(d.bt, 1) + " °C";
+    $("altabs").textContent = f(d.alt, 0) + " m";
+  }
+  if (d.gps) onGps(d.gps);
+  onRc(d.rc);
+  onLog(d.log);
+}
+
+function setZero() {
+  if (altFilt === null) return;
+  zeroAlt = altFilt; charts.alt.clear();
+  try { localStorage.setItem("caarl-zero", String(zeroAlt)); } catch (e) {}
+}
+
+const FIX = ["No fix", "Dead reckoning", "2D fix", "3D fix", "GPS + dead reckoning", "Time only"];
+function onGps(g) {
+  $("fix").textContent = FIX[g.fix] || "Fix " + g.fix;
+  const good = g.fix >= 2 && g.fix <= 4;
+  setChip("c-gps", good ? "good" : "warn", good ? `GPS ✓ ${g.sv} sats` : `GPS · no fix`);
+  $("fix-note").textContent = good ? "Position is valid." : g.sv ? "Getting closer… stay where it can see open sky." : "Indoors it usually can't see any satellites. Take it outside with the antenna attached and wait a few minutes.";
+  $("sats").textContent = g.sv;
+  $("lat").textContent = good ? g.lat.toFixed(6) + "°" : "–";
+  $("lon").textContent = good ? g.lon.toFixed(6) + "°" : "–";
+  $("galt").textContent = good ? g.h.toFixed(1) + " m" : "–";
+  $("spd").textContent = good ? g.spd.toFixed(1) + " m/s" : "–";
+  $("hacc").textContent = good ? "± " + g.hacc.toFixed(1) + " m" : "–";
+  $("utc").textContent = g.utc || "–";
+  const m = $("map");
+  m.classList.toggle("hidden", !good);
+  if (good) m.href = `https://www.openstreetmap.org/?mlat=${g.lat.toFixed(6)}&mlon=${g.lon.toFixed(6)}#map=17/${g.lat.toFixed(6)}/${g.lon.toFixed(6)}`;
+}
+
+function buildRc() {
+  $("rc").innerHTML = [1, 2, 3, 4].map(i => `
+    <div class="bar-label"><span>Channel ${i}${i <= 2 ? ` · servo ${i}` : ""}</span><span id="rc${i}">–</span></div>
+    <div class="bar"><i id="rcb${i}" style="width:0"></i></div>`).join("");
+}
+function onRc(rc) {
+  if (!rc) return;
+  const any = rc.some(v => v > 0);
+  setChip("c-rc", any ? "good" : "warn", any ? "Receiver ✓" : "Receiver · no signal");
+  rc.forEach((v, i) => {
+    $("rc" + (i + 1)).textContent = v ? v + " µs" : "no signal";
+    $("rcb" + (i + 1)).style.width = v ? Math.max(0, Math.min(100, (v - 1000) / 10)) + "%" : "0";
+  });
+  $("rc-note").textContent = any
+    ? "Each bar is a pulse from 1000 to 2000 µs. The middle line is 1500 µs, which is \"stop\" for the parachute winches."
+    : "No pulses yet. Wire the ER4, power it, and bind it to your transmitter; the bars then follow your sticks.";
+}
+
+function onLog(l) {
+  if (!l) return;
+  const was = recording; recording = l.on;
+  $("btn-rec").textContent = recording ? "■ Stop recording" : "● Start recording";
+  $("btn-rec").classList.toggle("rec", !recording); $("btn-rec").classList.toggle("primary", recording);
+  $("rec-dot").classList.toggle("on", recording);
+  $("rec-state").textContent = recording ? "Recording" : "Not recording";
+  $("btn-mark").disabled = !recording;
+  if (recording) {
+    $("rec-file").textContent = l.file; $("rec-time").textContent = dur(l.secs);
+    $("rec-rows").textContent = l.rows.toLocaleString(); $("rec-size").textContent = bytes(l.bytes);
+  }
+  if (was && !recording) refreshFiles();
+}
+
+// ---------- SD files ----------
+let busy = false;
+async function refreshFiles() {
+  if (busy) return;
+  const r = await cmd("LS");
+  if (r.type !== "ls") return;
+  $("card").textContent = `${bytes(r.used)} used of ${bytes(r.total)}`;
+  const tb = $("files");
+  if (!r.files.length) { tb.innerHTML = `<tr><td colspan="3" class="hint">The card is empty. Press "Start recording" to make your first log.</td></tr>`; return; }
+  r.files.sort((a, b) => b.name.localeCompare(a.name));
+  tb.innerHTML = "";
+  for (const file of r.files) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td></td><td class="num">${bytes(file.size)}</td><td class="acts">
+      <button class="small" data-a="open">Open</button><button class="small" data-a="save">Save</button><button class="small danger" data-a="del">Delete</button></td>`;
+    tr.firstChild.textContent = file.name.slice(1);
+    tr.querySelector("[data-a=open]").onclick = () => openFile(file.name, false);
+    tr.querySelector("[data-a=save]").onclick = () => openFile(file.name, true);
+    tr.querySelector("[data-a=del]").onclick = () => delFile(file.name);
+    tb.appendChild(tr);
+  }
+}
+async function fetchFile(name) {
+  if (busy) { toast("Still copying the last file…"); return null; }
+  busy = true; $("dl-progress").classList.remove("hidden"); $("dl-progress").firstChild.style.width = "0";
+  try {
+    const r = await fetch("/api/file?name=" + encodeURIComponent(name));
+    if (!r.ok) { const j = await r.json().catch(() => ({})); toast("⚠ " + (j.msg || "Couldn't read the file.")); return null; }
+    const saved = r.headers.get("X-Saved-To");
+    const text = await r.text();
+    if (saved) $("dl-note").textContent = `Last copy saved to ${saved}`;
+    return text;
+  } finally { busy = false; setTimeout(() => $("dl-progress").classList.add("hidden"), 600); }
+}
+let viewerText = "", viewerName = "";
+function saveText(name, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+  a.download = name.slice(1); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function openFile(name, saveOnly) {
+  toast(`Reading ${name.slice(1)} from the card…`, 10000);
+  const text = await fetchFile(name);
+  if (text === null) return;
+  toast(`Got ${name.slice(1)} (${bytes(text.length)})`);
+  if (saveOnly) { saveText(name, text); return; }
+  viewerText = text; viewerName = name; showViewer(name, text);
+}
+async function delFile(name) {
+  if (!confirm(`Delete ${name.slice(1)} from the SD card? This can't be undone.`)) return;
+  const r = await cmd("DEL " + name);
+  if (r.type === "ok") { toast(`Deleted ${name.slice(1)}`); refreshFiles(); }
+}
+
+// ---------- file viewer ----------
+let parsed = null;
+function showViewer(name, text) {
+  const lines = text.trim().split(/\r?\n/);
+  const head = lines[0].split(",");
+  const rows = lines.slice(1).map(l => l.split(","));
+  parsed = { head, rows };
+  $("viewer").classList.remove("hidden");
+  $("v-title").textContent = name.slice(1);
+  const col = n => head.indexOf(n), num = (r, i) => i < 0 || r[i] === "" || r[i] === undefined ? NaN : parseFloat(r[i]);
+  const stats = [];
+  stats.push(["Rows", rows.length.toLocaleString()]);
+  const ti = col("t_ms");
+  if (ti >= 0 && rows.length > 1) stats.push(["Duration", dur((num(rows[rows.length - 1], ti) - num(rows[0], ti)) / 1000)]);
+  const ai = col("baro_alt_m");
+  if (ai >= 0) {
+    const alts = rows.map(r => num(r, ai)).filter(Number.isFinite);
+    if (alts.length) { const base = alts.slice(0, 10).reduce((a, b) => a + b, 0) / Math.min(10, alts.length); stats.push(["Highest point", (Math.max(...alts) - base).toFixed(1) + " m above start"]); }
+  }
+  const [x, y, z] = ["ax_g", "ay_g", "az_g"].map(col);
+  if (x >= 0) {
+    let mg = 0; for (const r of rows) { const v = Math.hypot(num(r, x), num(r, y), num(r, z)); if (Number.isFinite(v)) mg = Math.max(mg, v); }
+    stats.push(["Max acceleration", mg.toFixed(2) + " g"]);
+  }
+  const si = col("gps_sats");
+  if (si >= 0) stats.push(["Most satellites", Math.max(0, ...rows.map(r => num(r, si)).filter(Number.isFinite))]);
+  $("v-stats").innerHTML = stats.map(([k, v]) => `<div class="stat"><b>${k}</b><span>${v}</span></div>`).join("");
+
+  const sel = $("v-col"); sel.innerHTML = "";
+  head.forEach((h, i) => { if (h !== "t_ms" && h !== "utc" && h !== "event") { const o = document.createElement("option"); o.value = i; o.textContent = h; sel.appendChild(o); } });
+  if (ai >= 0) sel.value = ai;
+  plotColumn();
+
+  const ei = col("event");
+  const evs = ei >= 0 ? rows.filter(r => r[ei]) : [];
+  const ev = $("v-events");
+  ev.innerHTML = evs.length ? "<h3 style='font-size:14px;margin:16px 0 6px'>Notes</h3>" : "";
+  for (const r of evs) { const p = document.createElement("div"); p.className = "hint"; p.textContent = `${((num(r, ti) - num(rows[0], ti)) / 1000).toFixed(1)} s: ${r[ei]}`; ev.appendChild(p); }
+  $("viewer").scrollIntoView({ behavior: "smooth" });
+}
+function plotColumn() {
+  if (!parsed) return;
+  const i = +$("v-col").value, ti = parsed.head.indexOf("t_ms");
+  const t0 = parseFloat(parsed.rows[0]?.[ti]) || 0;
+  charts.file.setAll(parsed.rows.map(r => [(parseFloat(r[ti]) - t0) / 1000, r[i] === "" ? NaN : parseFloat(r[i])]));
+}
+
+// ---------- buttons ----------
+$("btn-rec").onclick = async () => {
+  $("btn-rec").disabled = true;
+  const r = await cmd(recording ? "LOG STOP" : "LOG START");
+  if (r.type === "ok") toast(r.cmd === "LOG START" ? `Recording to ${r.file.slice(1)}` : `Saved ${r.file.slice(1)} (${r.rows.toLocaleString()} rows)`);
+  $("btn-rec").disabled = false;
+};
+$("btn-mark").onclick = async () => {
+  const t = $("mark-text").value.replace(/[,"\\\r\n]/g, " ").trim();
+  if (!t) { $("mark-text").focus(); return; }
+  const r = await cmd("MARK " + t);
+  if (r.type === "ok") { toast("Note added: " + t); $("mark-text").value = ""; }
+};
+$("mark-text").addEventListener("keydown", e => { if (e.key === "Enter") $("btn-mark").click(); });
+$("btn-cal").onclick = async () => {
+  toast("Keep the board still…", 3000); $("btn-cal").disabled = true;
+  const r = await cmd("CAL GYRO");
+  if (r.type === "ok") toast(`Gyro calibrated (offset ${r.bias.map(v => v.toFixed(2)).join(", ")} °/s)`);
+  $("btn-cal").disabled = false;
+};
+$("btn-zero").onclick = () => { setZero(); toast("Altitude zeroed here"); };
+$("btn-refresh").onclick = refreshFiles;
+$("v-close").onclick = () => { $("viewer").classList.add("hidden"); parsed = null; };
+$("v-save").onclick = () => saveText(viewerName, viewerText);
+$("v-col").onchange = plotColumn;
+
+// ---------- live connection ----------
+function connect() {
+  const es = new EventSource("/events");
+  es.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === "d") onData(m);
+    else if (m.type === "conn") onConn(m);
+    else if (m.type === "info") onInfo(m);
+    else if (m.type === "progress") $("dl-progress").firstChild.style.width = (m.size ? 100 * m.done / m.size : 100) + "%";
+    else if (m.type === "err" && m.cmd === "LOG") toast("⚠ Recording stopped: " + m.msg, 6000);
+  };
+  es.onerror = () => { onConn({ connected: false }); $("offline").textContent = "Can't reach dashboard.py. Is it still running in the terminal?"; };
+  es.onopen = () => { $("offline").textContent = "Looking for the payload… Plug in the USB cable, and make sure the Arduino Serial Monitor is closed."; };
+}
+
+buildRc();
+drawHorizon(0, 0);
+function frame() { for (const c of Object.values(charts)) c.draw(); requestAnimationFrame(frame); }
+window.addEventListener("resize", () => { for (const c of Object.values(charts)) c.dirty = true; });
+setInterval(() => { if (connected && Date.now() - lastSeen > 2000) setChip("c-conn", "warn", "Connected · no data (wrong firmware?)"); }, 1000);
+requestAnimationFrame(frame);
+connect();
+</script>
+</body>
+</html>
