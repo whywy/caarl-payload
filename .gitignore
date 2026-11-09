@@ -13,3 +13,6 @@ build/
 # Editor/OS junk
 .vscode/
 .DS_Store
+
+# FreeCAD automatic backups
+*.FCBak
