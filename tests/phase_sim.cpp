@@ -2,7 +2,9 @@
 // Runs the real detector against simple made-up flights (with sensor noise) and checks
 // which phases it reports, and when. No hardware needed.
 //
-//   g++ -std=c++17 -O1 -Wall -o /tmp/phase_sim tests/phase_sim.cpp && /tmp/phase_sim
+//   g++ -std=c++17 -O1 -Wall -Wno-format-security -o /tmp/phase_sim tests/phase_sim.cpp && /tmp/phase_sim
+//   /tmp/phase_sim --csv /tmp/simlogs     also saves each flight as a payload-style log (sim_*.csv)
+//                                         to try tools/phase_replay on
 //
 // Exit code 0 = every scenario passed.
 #include "../firmware/payload-dashboard/flight_phase.h"
@@ -24,7 +26,13 @@ struct Flight {
   float baroNoiseM = 0.4f, accNoiseG = 0.03f;
 };
 
-static std::vector<Event> run(const Flight &f, float *trueApogee, uint32_t *trueApogeeMs, uint32_t *landMs) {
+// Same columns as the payload's CSV_HEADER, so tools/phase_replay reads these like a real log.
+static const char *CSV_HEADER =
+    "t_ms,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps,imu_temp_c,pressure_pa,baro_temp_c,baro_alt_m,"
+    "gps_fix,gps_sats,lat,lon,gps_alt_m,gps_speed_mps,gps_hacc_m,utc,rc1_us,rc2_us,rc3_us,rc4_us,phase,vz_mps,event";
+
+static std::vector<Event> run(const Flight &f, float *trueApogee, uint32_t *trueApogeeMs, uint32_t *landMs,
+                              FILE *csv = nullptr) {
   std::mt19937 rng(1234);
   std::normal_distribution<float> nb(0, f.baroNoiseM), na(0, f.accNoiseG);
   PhaseDetector det;
@@ -54,7 +62,11 @@ static std::vector<Event> run(const Flight &f, float *trueApogee, uint32_t *true
     float aMag = fabsf(specific + na(rng));
     float baro = ground + h + nb(rng);
     uint32_t ms = (uint32_t)(t * 1000);
-    if (det.update(ms, true, aMag, true, baro)) ev.push_back({ms, det.phase, det.note});
+    bool changed = det.update(ms, true, aMag, true, baro);
+    if (changed) ev.push_back({ms, det.phase, det.note});
+    if (csv)  // all of the acceleration on z; the detector only uses the magnitude
+      fprintf(csv, "%u,0.0000,0.0000,%.4f,0.00,0.00,0.00,25.00,,,%.2f,0,0,0.0000000,0.0000000,0.00,0.00,0.00,,0,0,0,0,%s,%.2f,%s\n",
+              ms, aMag, baro, phaseName(det.phase), det.vz, changed ? det.note : "");
   }
   (void)apogeeT;
   return ev;
@@ -69,7 +81,8 @@ static const Event *find(const std::vector<Event> &e, Phase p) {
   return nullptr;
 }
 
-int main() {
+int main(int argc, char **argv) {
+  const char *csvDir = (argc == 3 && std::string(argv[1]) == "--csv") ? argv[2] : nullptr;
   Flight nominal{"nominal flight, opening shock 0.5 s after apogee"};
   Flight soft{"soft opening (no shock), 6 m/s under canopy"}; soft.shockG = 0;
   Flight lateShock{"shock 1.5 s after apogee"}; lateShock.shockAfterApogeeS = 1.5f;
@@ -77,9 +90,20 @@ int main() {
   Flight bump{"sitting on the pad, bumped once (5 g spike)"}; bump.fly = false; bump.padBumpG = 5.0f;
   Flight noisy{"nominal, double sensor noise"}; noisy.baroNoiseM = 0.8f; noisy.accNoiseG = 0.06f;
 
+  const char *files[] = {"sim_nominal", "sim_soft", "sim_late_shock", "sim_no_chute", "sim_pad_bump", "sim_noisy"};
+  int idx = 0;
   for (Flight *f : {&nominal, &soft, &lateShock, &noChute, &bump, &noisy}) {
     float apo; uint32_t apoMs, landMs;
-    auto ev = run(*f, &apo, &apoMs, &landMs);
+    FILE *csv = nullptr;
+    if (csvDir) {
+      std::string path = std::string(csvDir) + "/" + files[idx] + ".csv";
+      csv = fopen(path.c_str(), "w");
+      if (!csv) { printf("can't write %s\n", path.c_str()); return 2; }
+      fprintf(csv, "%s\n", CSV_HEADER);
+    }
+    idx++;
+    auto ev = run(*f, &apo, &apoMs, &landMs, csv);
+    if (csv) fclose(csv);
     printf("\n== %s  (true apogee %.0f m at %.1f s)\n", f->name, apo, apoMs / 1000.0);
     for (auto &e : ev) printf("  %6.2f s  %s\n", e.t / 1000.0, e.note.c_str());
     const Event *L = find(ev, PH_BOOST), *A = find(ev, PH_DESCENT), *C = find(ev, PH_CHUTE), *S = find(ev, PH_SETTLED), *G = find(ev, PH_LANDED);

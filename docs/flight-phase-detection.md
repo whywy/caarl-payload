@@ -6,6 +6,8 @@ what the numbers mean, and how to change them safely.
 - **Code:** [`firmware/payload-dashboard/flight_phase.h`](../firmware/payload-dashboard/flight_phase.h)
   (plain C++, all thresholds in `PhaseConfig`)
 - **Desk simulation:** [`tests/phase_sim.cpp`](../tests/phase_sim.cpp)
+- **Replay a real log with other settings:** [`tools/phase_replay.cpp`](../tools/phase_replay.cpp)
+  (section 8.1)
 - **Status (firmware 1.5):** **log-only.** It writes its decisions to the `phase`, `vz_mps` and `event`
   columns. Nothing reads them to move a servo yet. The thresholds have been checked against simulated
   flights only, not a real one.
@@ -375,11 +377,42 @@ Adding any of these is a good way to harden the detector: add a scenario, watch 
      rocket's own altimeter recorded (apogee height and time)
    - `vz_mps` against the altitude curve: is the descent rate under canopy what section 5.4 predicts?
    - the biggest `|a|` around apogee: how big was the opening shock really?
-6. **Tune** from the real numbers, add the flight as a new simulation scenario if something surprised
-   you, and repeat.
+6. **Replay the flight with different settings** (section 8.1) until the phases land where they
+   should. Then put those values in `PhaseConfig`, rerun the simulation, and flash.
+7. If something surprised you, add it as a new simulation scenario, and repeat.
 
-A useful next tool would be a **replay program** that runs `flight_phase.h` over a real flight's CSV
-with different settings, so thresholds can be tuned against real data without flying again.
+### 8.1 Replaying a real flight: `tools/phase_replay.cpp`
+
+Runs the **same** `flight_phase.h` over a recorded log, with any settings you choose, and prints where
+each phase change would have happened next to what the payload actually recorded. One flight can be
+re-tuned as many times as you like without flying again.
+
+```bash
+cd ~/Projects/caarl-payload
+g++ -std=c++17 -O2 -Wall -Wno-format-security -o /tmp/phase_replay tools/phase_replay.cpp   # build once
+/tmp/phase_replay --settings                                    # list every setting and its default
+/tmp/phase_replay downloads/LOG012.CSV                          # replay with the current defaults
+/tmp/phase_replay downloads/LOG012.CSV APOGEE_DROP_M=2 SHOCK_G=2.5   # try other values
+/tmp/phase_replay downloads/LOG012.CSV --out /tmp/replayed.csv  # also save height, vz and phase per row
+```
+
+(Logs you save from the dashboard go in `downloads/`, which git ignores, so flight data stays on
+your computer.)
+
+What it prints:
+- **Replayed:** each phase change with these settings, in seconds from the start of the log.
+- **Recorded:** what the payload itself decided during the flight. Only for logs from firmware 1.5
+  or later; older logs can still be replayed.
+- **Summary:** highest point above the pad, biggest acceleration and when, and the average descent
+  rate while `SETTLED`. Compare that with $v_t$ from section 5.4.
+
+`--out` writes one row per reading (`t_ms, a_g, baro_alt_m, replay_alt_agl_m, replay_vz_mps,
+replay_phase, recorded_phase`). Open it in LibreOffice Calc and chart altitude and `vz` against time to
+**see** where each rule fired.
+
+**Checking the tool itself:** with default settings, replaying a log must reproduce the recorded
+phases exactly. The simulation can write its flights as logs for this:
+`/tmp/phase_sim --csv /tmp/simlogs`, then replay any `sim_*.csv` file.
 
 ---
 

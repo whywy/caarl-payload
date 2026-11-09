@@ -42,6 +42,7 @@ build on it.
 | `firmware/payload-dashboard/flight_phase.h` | Flight phase detection (pad, boost, coast, apogee, chute open, landed). **Log-only: never moves a servo** |
 | `tests/phase_sim.cpp` | Desk simulation that runs `flight_phase.h` against made-up flights (see below) |
 | `docs/flight-phase-detection.md` | The maths and reasoning behind the phase detector, its settings, and how to iterate on it |
+| `tools/phase_replay.cpp` | Replays a recorded log through the phase detector with any settings, to tune it after a flight |
 | `dashboard.py` | The PC program. Talks to the ESP32 over USB and serves the web page. Standard-library Python only, so nothing to install |
 | `web/index.html` | The dashboard page itself |
 | `start-dashboard.sh` | Double-click launcher for `dashboard.py` |
@@ -161,6 +162,12 @@ soft opening, late opening, chute failure, a bump on the pad, and extra noise. I
 cd ~/Projects/caarl-payload && g++ -std=c++17 -O1 -Wall -Wno-format-security -o /tmp/phase_sim tests/phase_sim.cpp && /tmp/phase_sim
 ```
 After a real flight, compare the `phase` column with what you saw, and adjust the thresholds if needed.
+
+**After a flight, replay its log with different settings** (same detector code, nothing to flash):
+```bash
+cd ~/Projects/caarl-payload && g++ -std=c++17 -O2 -Wall -Wno-format-security -o /tmp/phase_replay tools/phase_replay.cpp
+/tmp/phase_replay downloads/LOG012.CSV APOGEE_DROP_M=2
+```
 
 **The maths behind every rule, what each setting does, and how to tune them:**
 [`docs/flight-phase-detection.md`](docs/flight-phase-detection.md).
