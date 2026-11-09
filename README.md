@@ -38,7 +38,7 @@ build on it.
 
 | Path | What it is |
 |---|---|
-| `firmware/payload-dashboard/payload-dashboard.ino` | The ESP32 program. Reads every sensor 20 times a second, sends readings to the PC 10 times a second, records to the SD card on command |
+| `firmware/payload-dashboard/payload-dashboard.ino` | The ESP32 program. Reads every sensor 20 times a second, sends readings to the PC 10 times a second, records to the SD card from power-up (or on command) |
 | `dashboard.py` | The PC program. Talks to the ESP32 over USB and serves the web page. Standard-library Python only, so nothing to install |
 | `web/index.html` | The dashboard page itself |
 | `start-dashboard.sh` | Double-click launcher for `dashboard.py` |
@@ -103,6 +103,12 @@ gps_alt_m gps_speed_mps gps_hacc_m utc` · `rc1_us … rc4_us` (0 = no signal) �
 They open straight in LibreOffice Calc or any spreadsheet.
 
 ## Good to know
+- **Recording starts by itself at power-up** (firmware 1.1+), into a new `LOGnnn.CSV` each time, so it records
+  with no computer attached. The first row's `event` column says `auto start at power-up`. Every power-up makes a
+  new file (USB bench sessions too), so delete old ones from the dashboard now and then. To turn this off, set
+  `AUTO_LOG = false` in the firmware.
+- **Never connect USB while the board is powered from its 5 V input** (battery, Flipper, bench supply), unless
+  you've confirmed the ESP32 board has a diode between USB and VIN.
 - The recording is saved to the card every second, so pulling the power loses at most about one second.
 - The SD card must be **FAT32** (a fresh 64 GB card usually comes as exFAT, which won't work).
 - The gyro calibration is forgotten at power-off: calibrate again after each power-up.

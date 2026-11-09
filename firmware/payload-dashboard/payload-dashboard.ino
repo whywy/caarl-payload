@@ -1,6 +1,10 @@
 // CAARL payload v2: dashboard firmware
 // Sends every sensor reading to the PC as one line of JSON, and records
-// readings to the SD card when the PC tells it to. Pair it with dashboard.py.
+// readings to the SD card. Pair it with dashboard.py.
+//
+// Recording starts by itself at power-up (AUTO_LOG below) into a new /LOGnnn.CSV,
+// so it works with no PC attached (rocket, battery or Flipper power). The PC can
+// still stop and start recordings with LOG STOP / LOG START.
 //
 // Board: "ESP32 Dev Module". Serial: 921600 baud (the Serial Monitor must be set
 // to 921600 too, or it shows garbage).
@@ -23,7 +27,8 @@
 #include <Adafruit_BMP3XX.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 
-const char *FW_VERSION = "1.0";
+const char *FW_VERSION = "1.1";
+const bool AUTO_LOG = true;      // start recording at power-up; set false for PC-only recording
 const uint32_t BAUD = 921600;
 const int SDA_PIN = 21, SCL_PIN = 22, SD_CS = 5;
 const int RC_PINS[4] = {36, 39, 34, 35};
@@ -394,6 +399,11 @@ void setup() {
     attachInterruptArg(RC_PINS[i], rcIsr, (void *)(intptr_t)i, CHANGE);
   }
   sendInfo();
+
+  if (AUTO_LOG && haveSd) {
+    logStart();
+    strcpy(pendingMark, "auto start at power-up");  // marks the first row of the file
+  }
 }
 
 void loop() {
