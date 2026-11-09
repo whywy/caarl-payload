@@ -122,7 +122,11 @@ They open straight in LibreOffice Calc or any spreadsheet.
   you've confirmed the ESP32 board has a diode between USB and VIN.
 - The recording is saved to the card every second, so pulling the power loses at most about one second.
 - The SD card must be **FAT32** (a fresh 64 GB card usually comes as exFAT, which won't work).
-- The gyro calibration is forgotten at power-off: calibrate again after each power-up.
+- **The gyro calibrates itself at power-up** (firmware 1.3+), but **only if the board is still** for that first
+  second (gyro swing under 2 °/s and accelerometer swing under 0.05 g). Power it up on the pad or a desk, not in
+  your hand. The first row's `event` column says what happened, e.g. `gyro auto-cal bias 2.71 1.18 -0.09 dps`
+  or `gyro NOT calibrated: moving (...)`. Nothing is stored between power-ups; **Calibrate gyro** in the dashboard
+  still works and replaces it. Turn it off with `AUTO_CAL_GYRO = false`.
 - "Set zero here" is remembered by the browser, not the payload.
 - The barometer's first readings after power-up are wrong, so the firmware skips them.
 - The IMU's X/Y axes are rotated 90° from the rocket's (see WIRING.md); the dashboard shows the board's own axes.

@@ -21,6 +21,9 @@
 //   GET /<file>     send a file to the PC (base64, in chunks)
 //   DEL /<file>     delete a file
 //   CAL GYRO        measure the gyro's offset (keep the board still for 1 s)
+//
+// The gyro offset is also measured automatically at power-up (AUTO_CAL_GYRO), but only if
+// the board is still; the first row of each recording says whether it was applied.
 
 #include <WiFi.h>
 #include <Wire.h>
@@ -29,8 +32,10 @@
 #include <Adafruit_BMP3XX.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 
-const char *FW_VERSION = "1.2";
+const char *FW_VERSION = "1.3";
 const bool AUTO_LOG = true;      // start recording at power-up; set false for PC-only recording
+const bool AUTO_CAL_GYRO = true; // measure the gyro offset at power-up if the board is still
+const float STILL_GYRO_DPS = 2.0f, STILL_ACC_G = 0.05f;  // max swing during that 1 s to count as "still"
 const uint32_t SD_RETRY_MS = 2000, SD_RETRY_FOR_MS = 30000;  // keep looking for the card for 30 s
 // Status LED. The Inland ESP32 board has only a power LED, so this is an external LED on the
 // perfboard: GPIO13 (hole V31) -> 330 ohm -> LED (red/green/yellow) -> GND (hole U31). ~3-5 mA.
@@ -112,7 +117,7 @@ File logFile;
 bool logging = false;
 char logName[16] = "";
 uint32_t logRows = 0, logStartMs = 0, lastFlush = 0;
-char pendingMark[64] = "";
+char pendingMark[128] = "";
 char logError[64] = "";
 bool autoPending = false;  // auto-record still waiting for the SD card after power-up
 
@@ -261,20 +266,60 @@ void cmdDel(const char *path) {
   sendOk("DEL");
 }
 
-void cmdCalGyro() {
-  if (!haveImu) { sendErr("CAL GYRO", "no IMU"); return; }
+// Average the gyro for about 1 s. Also reports how much the board moved meanwhile (the largest
+// max-min swing of any gyro axis, deg/s, and of any accelerometer axis, g) so callers can tell
+// whether it was really still. Returns false if the IMU couldn't be read.
+bool measureGyroBias(float bias[3], float *gyroSwing, float *accSwing) {
   double sum[3] = {0, 0, 0};
+  float gMin[3], gMax[3], aMin[3], aMax[3];
+  for (int k = 0; k < 3; k++) { gMin[k] = aMin[k] = 1e9; gMax[k] = aMax[k] = -1e9; }
   int good = 0;
   for (int i = 0; i < 200; i++) {
     int16_t v[7];
-    if (imuReadRaw(v)) { for (int k = 0; k < 3; k++) sum[k] += v[4 + k] / 131.0; good++; }
+    if (imuReadRaw(v)) {
+      for (int k = 0; k < 3; k++) {
+        float g = v[4 + k] / 131.0f, a = v[k] / 16384.0f;
+        sum[k] += g;
+        gMin[k] = min(gMin[k], g); gMax[k] = max(gMax[k], g);
+        aMin[k] = min(aMin[k], a); aMax[k] = max(aMax[k], a);
+      }
+      good++;
+    }
     delay(5);
   }
-  if (good < 100) { sendErr("CAL GYRO", "IMU read failed"); return; }
-  for (int k = 0; k < 3; k++) gyroBias[k] = sum[k] / good;
+  if (good < 100) return false;
+  *gyroSwing = *accSwing = 0;
+  for (int k = 0; k < 3; k++) {
+    bias[k] = sum[k] / good;
+    *gyroSwing = max(*gyroSwing, gMax[k] - gMin[k]);
+    *accSwing = max(*accSwing, aMax[k] - aMin[k]);
+  }
+  return true;
+}
+
+void cmdCalGyro() {
+  if (!haveImu) { sendErr("CAL GYRO", "no IMU"); return; }
+  float bias[3], gs, as;
+  if (!measureGyroBias(bias, &gs, &as)) { sendErr("CAL GYRO", "IMU read failed"); return; }
+  for (int k = 0; k < 3; k++) gyroBias[k] = bias[k];
   char extra[80];
   snprintf(extra, sizeof extra, ",\"bias\":[%.3f,%.3f,%.3f]", gyroBias[0], gyroBias[1], gyroBias[2]);
   sendOk("CAL GYRO", extra);
+}
+
+// At power-up, calibrate the gyro only if the board is sitting still (on the pad, on a desk).
+// If it's being moved, keep the offset at 0 rather than baking the motion into every reading.
+char autoCalNote[64] = "";
+void autoCalGyro() {
+  if (!AUTO_CAL_GYRO || !haveImu) return;
+  float bias[3], gs, as;
+  if (!measureGyroBias(bias, &gs, &as)) { strcpy(autoCalNote, "gyro auto-cal failed: IMU read error"); return; }
+  if (gs > STILL_GYRO_DPS || as > STILL_ACC_G) {
+    snprintf(autoCalNote, sizeof autoCalNote, "gyro NOT calibrated: moving (%.1f dps / %.2f g swing)", gs, as);
+    return;
+  }
+  for (int k = 0; k < 3; k++) gyroBias[k] = bias[k];
+  snprintf(autoCalNote, sizeof autoCalNote, "gyro auto-cal bias %.2f %.2f %.2f dps", bias[0], bias[1], bias[2]);
 }
 
 void handleCommand(char *line) {
@@ -391,6 +436,7 @@ void setup() {
   Wire.setClock(400000);  // the perfboard's short wires are fine at 400 kHz
 
   haveImu = imuBegin();
+  autoCalGyro();  // ~1 s; only applied if the board is still
   haveBaro = bmp.begin_I2C(0x77);
   if (haveBaro) {
     bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_2X);
@@ -417,7 +463,7 @@ void setup() {
   if (AUTO_LOG) {
     if (haveSd) {
       logStart();
-      strcpy(pendingMark, "auto start at power-up");  // marks the first row of the file
+      snprintf(pendingMark, sizeof pendingMark, "auto start at power-up | %s", autoCalNote);  // first row of the file
     } else {
       autoPending = true;  // keep trying in loop(): the card may need longer to power up
     }
@@ -441,8 +487,8 @@ void retrySd(uint32_t now) {
   haveSd = SD.begin(SD_CS);
   if (haveSd) {
     logStart();
-    if (logging) snprintf(pendingMark, sizeof pendingMark, "auto start - SD found %lus after power-up",
-                          (unsigned long)(now / 1000));
+    if (logging) snprintf(pendingMark, sizeof pendingMark, "auto start - SD found %lus after power-up | %s",
+                          (unsigned long)(now / 1000), autoCalNote);
   }
 }
 
