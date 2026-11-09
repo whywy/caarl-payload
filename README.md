@@ -41,6 +41,7 @@ build on it.
 | `firmware/payload-dashboard/payload-dashboard.ino` | The ESP32 program. Reads every sensor 20 times a second, sends readings to the PC 10 times a second, records to the SD card from power-up (or on command) |
 | `firmware/payload-dashboard/flight_phase.h` | Flight phase detection (pad, boost, coast, apogee, chute open, landed). **Log-only: never moves a servo** |
 | `tests/phase_sim.cpp` | Desk simulation that runs `flight_phase.h` against made-up flights (see below) |
+| `docs/flight-phase-detection.md` | The maths and reasoning behind the phase detector, its settings, and how to iterate on it |
 | `dashboard.py` | The PC program. Talks to the ESP32 over USB and serves the web page. Standard-library Python only, so nothing to install |
 | `web/index.html` | The dashboard page itself |
 | `start-dashboard.sh` | Double-click launcher for `dashboard.py` |
@@ -160,6 +161,9 @@ soft opening, late opening, chute failure, a bump on the pad, and extra noise. I
 cd ~/Projects/caarl-payload && g++ -std=c++17 -O1 -Wall -Wno-format-security -o /tmp/phase_sim tests/phase_sim.cpp && /tmp/phase_sim
 ```
 After a real flight, compare the `phase` column with what you saw, and adjust the thresholds if needed.
+
+**The maths behind every rule, what each setting does, and how to tune them:**
+[`docs/flight-phase-detection.md`](docs/flight-phase-detection.md).
 
 ## How it works (for later versions)
 
