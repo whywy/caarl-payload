@@ -39,6 +39,8 @@ build on it.
 | Path | What it is |
 |---|---|
 | `firmware/payload-dashboard/payload-dashboard.ino` | The ESP32 program. Reads every sensor 20 times a second, sends readings to the PC 10 times a second, records to the SD card from power-up (or on command) |
+| `firmware/payload-dashboard/flight_phase.h` | Flight phase detection (pad, boost, coast, apogee, chute open, landed). **Log-only: never moves a servo** |
+| `tests/phase_sim.cpp` | Desk simulation that runs `flight_phase.h` against made-up flights (see below) |
 | `dashboard.py` | The PC program. Talks to the ESP32 over USB and serves the web page. Standard-library Python only, so nothing to install |
 | `web/index.html` | The dashboard page itself |
 | `start-dashboard.sh` | Double-click launcher for `dashboard.py` |
@@ -99,7 +101,8 @@ Full wiring: `~/School/Avionics/perfboard/WIRING.md` and `PERFBOARD-BUILD-GUIDE.
 `t_ms` (ms since power-on) · `ax_g ay_g az_g` (±16 g range) · `gx_dps gy_dps gz_dps` (±2000 °/s range, gyro
 offset removed if calibrated; both filtered on the chip at about 20 Hz, firmware 1.4+) ·
 `imu_temp_c` · `pressure_pa` · `baro_temp_c` · `baro_alt_m` (standard-atmosphere estimate) · `gps_fix gps_sats lat lon
-gps_alt_m gps_speed_mps gps_hacc_m utc` · `rc1_us … rc4_us` (0 = no signal) · `event`
+gps_alt_m gps_speed_mps gps_hacc_m utc` · `rc1_us … rc4_us` (0 = no signal) · `phase` · `vz_mps` (filtered
+vertical speed from the barometer, + = up) · `event`
 
 They open straight in LibreOffice Calc or any spreadsheet.
 
@@ -133,6 +136,30 @@ They open straight in LibreOffice Calc or any spreadsheet.
 - The IMU's X/Y axes are rotated 90° from the rocket's (see WIRING.md); the dashboard shows the board's own axes.
 - With WiFi or Bluetooth on, the ESP32's regulator overheats on this board and the radio jams the ER4.
   The firmware keeps both **off**.
+
+## Flight phases (firmware 1.5+, log-only)
+
+The payload works out which part of the flight it's in and writes it to the `phase` column. Each change
+also goes in the `event` column with a short explanation, e.g. `PHASE DESCENT: apogee 427.8 m AGL`.
+**It never moves a servo**: this is a trial run so we can check its guesses against real flights before
+anything depends on it.
+
+| Phase | How it's detected (settings at the top of `flight_phase.h`) |
+|---|---|
+| `PAD` | Waiting. Keeps learning ground-level altitude |
+| `BOOST` | Over 3 g for 0.15 s (or, as a backup, 30 m up and climbing at 15 m/s) |
+| `COAST` | Acceleration under 1.5 g (motor out; reported up to about 0.5 s late) |
+| `DESCENT` | Filtered barometer altitude 3 m below its peak, at least 4 s after launch |
+| `CHUTE` | Opening shock over 3 g, or a steady 2–15 m/s descent for 2 s |
+| `SETTLED` | 3 s after `CHUTE` (steering would start here in a later version) |
+| `LANDED` | Altitude steady within 1.5 m for 5 s, under 50 m above the pad |
+
+**Desk simulation:** runs the same detector against made-up flights with sensor noise: normal flight,
+soft opening, late opening, chute failure, a bump on the pad, and extra noise. It checks each one.
+```bash
+cd ~/Projects/caarl-payload && g++ -std=c++17 -O1 -Wall -Wno-format-security -o /tmp/phase_sim tests/phase_sim.cpp && /tmp/phase_sim
+```
+After a real flight, compare the `phase` column with what you saw, and adjust the thresholds if needed.
 
 ## How it works (for later versions)
 

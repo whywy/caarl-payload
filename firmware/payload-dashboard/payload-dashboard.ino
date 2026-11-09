@@ -31,8 +31,9 @@
 #include <SD.h>
 #include <Adafruit_BMP3XX.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
+#include "flight_phase.h"  // log-only flight phase detection (never moves a servo)
 
-const char *FW_VERSION = "1.4";
+const char *FW_VERSION = "1.5";
 const bool AUTO_LOG = true;      // start recording at power-up; set false for PC-only recording
 const bool AUTO_CAL_GYRO = true; // measure the gyro offset at power-up if the board is still
 const float STILL_GYRO_DPS = 2.0f, STILL_ACC_G = 0.05f;  // max swing during that 1 s to count as "still"
@@ -112,7 +113,7 @@ void IRAM_ATTR rcIsr(void *arg) {
     uint32_t w = now - rcRise[i], p = rcPeriod[i];
     bool valid = w > 700 && w < 2400 && p >= 2500 && p <= 30000 && w < p;
     if (!valid) { rcGood[i] = 0; return; }
-    if (rcGood[i] < RC_GOOD_NEEDED) rcGood[i]++;
+    if (rcGood[i] < RC_GOOD_NEEDED) rcGood[i] = rcGood[i] + 1;
     if (rcGood[i] >= RC_GOOD_NEEDED) { rcWidth[i] = w; rcSeen[i] = now; }
   }
 }
@@ -135,7 +136,8 @@ File logFile;
 bool logging = false;
 char logName[16] = "";
 uint32_t logRows = 0, logStartMs = 0, lastFlush = 0;
-char pendingMark[128] = "";
+char pendingMark[256] = "";
+PhaseDetector phaseDet;
 char logError[64] = "";
 bool autoPending = false;  // auto-record still waiting for the SD card after power-up
 
@@ -183,7 +185,7 @@ void sendInfo() {
 // ---------- SD recording ----------
 const char *CSV_HEADER =
     "t_ms,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps,imu_temp_c,pressure_pa,baro_temp_c,baro_alt_m,"
-    "gps_fix,gps_sats,lat,lon,gps_alt_m,gps_speed_mps,gps_hacc_m,utc,rc1_us,rc2_us,rc3_us,rc4_us,event";
+    "gps_fix,gps_sats,lat,lon,gps_alt_m,gps_speed_mps,gps_hacc_m,utc,rc1_us,rc2_us,rc3_us,rc4_us,phase,vz_mps,event";
 
 void logStart() {
   if (logging) { sendErr("LOG START", "already recording"); return; }
@@ -222,7 +224,7 @@ void logStop(const char *reason = nullptr) {
 }
 
 void logRow() {
-  char line[360];
+  char line[560];
   int n = snprintf(line, sizeof line, "%lu,", (unsigned long)r.t);
   if (r.imuOk)
     n += snprintf(line + n, sizeof line - n, "%.4f,%.4f,%.4f,%.2f,%.2f,%.2f,%.2f,",
@@ -230,9 +232,9 @@ void logRow() {
   else n += snprintf(line + n, sizeof line - n, ",,,,,,,");
   if (r.baroOk) n += snprintf(line + n, sizeof line - n, "%.1f,%.2f,%.2f,", r.p, r.bT, r.alt);
   else n += snprintf(line + n, sizeof line - n, ",,,");
-  n += snprintf(line + n, sizeof line - n, "%d,%d,%.7f,%.7f,%.2f,%.2f,%.2f,%s,%u,%u,%u,%u,%s",
+  n += snprintf(line + n, sizeof line - n, "%d,%d,%.7f,%.7f,%.2f,%.2f,%.2f,%s,%u,%u,%u,%u,%s,%.2f,%s",
                 r.fix, r.sv, r.lat, r.lon, r.gAlt, r.spd, r.hAcc, r.utc,
-                r.rc[0], r.rc[1], r.rc[2], r.rc[3], pendingMark);
+                r.rc[0], r.rc[1], r.rc[2], r.rc[3], phaseName(phaseDet.phase), phaseDet.vz, pendingMark);
   pendingMark[0] = 0;
   if (logFile.println(line) == 0) { logStop("SD write failed: is the card still in?"); return; }
   logRows++;
@@ -434,6 +436,8 @@ void streamReading(uint32_t loopMs) {
                   ",\"gps\":{\"fix\":%d,\"sv\":%d,\"lat\":%.7f,\"lon\":%.7f,\"h\":%.2f,\"spd\":%.2f,\"hacc\":%.2f,\"utc\":\"%s\"}",
                   r.fix, r.sv, r.lat, r.lon, r.gAlt, r.spd, r.hAcc, r.utc);
   n += snprintf(line + n, sizeof line - n, ",\"rc\":[%u,%u,%u,%u]", r.rc[0], r.rc[1], r.rc[2], r.rc[3]);
+  n += snprintf(line + n, sizeof line - n, ",\"ph\":\"%s\",\"vz\":%.2f,\"agl\":%.1f",
+                phaseName(phaseDet.phase), phaseDet.vz, phaseDet.agl());
   n += snprintf(line + n, sizeof line - n,
                 ",\"log\":{\"on\":%s,\"file\":\"%s\",\"rows\":%lu,\"bytes\":%lu,\"secs\":%.1f,\"err\":\"%s\"}",
                 logging ? "true" : "false", logName, (unsigned long)logRows,
@@ -520,6 +524,16 @@ void updateLed(uint32_t now) {
   digitalWrite(LED_PIN, on);
 }
 
+// Log-only flight phase detection: changes go into the "event" column; the current phase,
+// vertical speed and height above the pad are in every row and in the PC stream.
+void updatePhase() {
+  float aMag = r.imuOk ? sqrtf(r.a[0] * r.a[0] + r.a[1] * r.a[1] + r.a[2] * r.a[2]) : 0;
+  if (!phaseDet.update(r.t, r.imuOk, aMag, r.baroOk, r.alt)) return;
+  if (!logging) return;
+  int n = strlen(pendingMark);
+  snprintf(pendingMark + n, sizeof pendingMark - n, "%s%s", n ? " | " : "", phaseDet.note);
+}
+
 void loop() {
   static uint32_t next = 0, count = 0;
   readCommands();
@@ -531,6 +545,7 @@ void loop() {
 
   uint32_t start = millis();
   readSensors();
+  updatePhase();
   if (logging) logRow();
   if (++count % STREAM_EVERY == 0) streamReading(millis() - start);
 }
