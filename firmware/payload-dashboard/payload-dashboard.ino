@@ -32,7 +32,7 @@
 #include <Adafruit_BMP3XX.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 
-const char *FW_VERSION = "1.3";
+const char *FW_VERSION = "1.4";
 const bool AUTO_LOG = true;      // start recording at power-up; set false for PC-only recording
 const bool AUTO_CAL_GYRO = true; // measure the gyro offset at power-up if the board is still
 const float STILL_GYRO_DPS = 2.0f, STILL_ACC_G = 0.05f;  // max swing during that 1 s to count as "still"
@@ -52,6 +52,16 @@ const uint32_t FLUSH_MS = 1000;  // save the recording to the card every second
 // ---------- IMU: MPU-6050 clone, read through its registers ----------
 const uint8_t IMU_ADDR = 0x68;
 uint8_t imuId = 0;
+// Flight ranges: +-16 g and +-2000 deg/s, so the boost doesn't saturate the readings.
+// The scale used for the maths is worked out from what the chip reports back, so the
+// numbers stay right even if a clone ignores the setting.
+const uint8_t IMU_ACC_FS = 3, IMU_GYRO_FS = 3;  // 0..3 = +-2/4/8/16 g and +-250/500/1000/2000 deg/s
+// On-chip low-pass filter (DLPF_CFG 4 = about 20 Hz). We sample 20 times a second, so without it
+// motor vibration aliases into random jumps in the log, and the stillness check sees only noise.
+const uint8_t IMU_DLPF = 4;
+float accLsbPerG = 16384.0f, gyroLsbPerDps = 131.0f;
+int accRangeG = 2, gyroRangeDps = 250;
+uint8_t imuDlpf = 0;  // filter setting the chip reports back
 float gyroBias[3] = {0, 0, 0};
 
 uint8_t imuRead8(uint8_t reg) {
@@ -66,6 +76,14 @@ bool imuBegin() {
   imuId = imuRead8(0x75);
   Wire.beginTransmission(IMU_ADDR); Wire.write(0x6B); Wire.write(0x00); Wire.endTransmission();  // wake up
   delay(100);
+  Wire.beginTransmission(IMU_ADDR); Wire.write(0x1A); Wire.write(IMU_DLPF); Wire.endTransmission();
+  Wire.beginTransmission(IMU_ADDR); Wire.write(0x1B); Wire.write(IMU_GYRO_FS << 3); Wire.endTransmission();
+  Wire.beginTransmission(IMU_ADDR); Wire.write(0x1C); Wire.write(IMU_ACC_FS << 3); Wire.endTransmission();
+  delay(10);
+  uint8_t gfs = (imuRead8(0x1B) >> 3) & 3, afs = (imuRead8(0x1C) >> 3) & 3;  // read back what it accepted
+  gyroLsbPerDps = 131.0f / (1 << gfs);  gyroRangeDps = 250 << gfs;
+  accLsbPerG = 16384.0f / (1 << afs);   accRangeG = 2 << afs;
+  imuDlpf = imuRead8(0x1A) & 7;
   return true;
 }
 bool imuReadRaw(int16_t v[7]) {  // ax ay az temp gx gy gz
@@ -153,11 +171,13 @@ void base64(const uint8_t *in, size_t n, char *out) {
 void sendInfo() {
   if (!haveSd) haveSd = SD.begin(SD_CS);  // lets you insert a card after boot
   Serial.printf("{\"type\":\"info\",\"fw\":\"%s\",\"imu\":%s,\"imuId\":%u,\"baro\":%s,\"gps\":%s,\"sd\":%s,"
-                "\"sdTotal\":%llu,\"sdUsed\":%llu,\"rate\":%lu,\"gyroBias\":[%.3f,%.3f,%.3f]}\n",
+                "\"sdTotal\":%llu,\"sdUsed\":%llu,\"rate\":%lu,\"gyroBias\":[%.3f,%.3f,%.3f],"
+                "\"accRangeG\":%d,\"gyroRangeDps\":%d,\"dlpf\":%u}\n",
                 FW_VERSION, haveImu ? "true" : "false", imuId, haveBaro ? "true" : "false",
                 haveGps ? "true" : "false", haveSd ? "true" : "false",
                 haveSd ? SD.totalBytes() : 0ULL, haveSd ? SD.usedBytes() : 0ULL,
-                (unsigned long)(1000 / SAMPLE_MS), gyroBias[0], gyroBias[1], gyroBias[2]);
+                (unsigned long)(1000 / SAMPLE_MS), gyroBias[0], gyroBias[1], gyroBias[2],
+                accRangeG, gyroRangeDps, imuDlpf);
 }
 
 // ---------- SD recording ----------
@@ -278,7 +298,7 @@ bool measureGyroBias(float bias[3], float *gyroSwing, float *accSwing) {
     int16_t v[7];
     if (imuReadRaw(v)) {
       for (int k = 0; k < 3; k++) {
-        float g = v[4 + k] / 131.0f, a = v[k] / 16384.0f;
+        float g = v[4 + k] / gyroLsbPerDps, a = v[k] / accLsbPerG;
         sum[k] += g;
         gMin[k] = min(gMin[k], g); gMax[k] = max(gMax[k], g);
         aMin[k] = min(aMin[k], a); aMax[k] = max(aMax[k], a);
@@ -361,10 +381,10 @@ void readSensors() {
 
   int16_t v[7];
   r.imuOk = haveImu && imuReadRaw(v);
-  if (r.imuOk) {  // default ranges: +-2 g (16384 per g), +-250 deg/s (131 per deg/s)
+  if (r.imuOk) {  // ranges set in imuBegin()
     for (int k = 0; k < 3; k++) {
-      r.a[k] = v[k] / 16384.0f;
-      r.g[k] = v[4 + k] / 131.0f - gyroBias[k];
+      r.a[k] = v[k] / accLsbPerG;
+      r.g[k] = v[4 + k] / gyroLsbPerDps - gyroBias[k];
     }
     r.imuT = v[3] / 340.0f + 36.53f;
   }

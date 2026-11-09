@@ -96,7 +96,8 @@ Full wiring: `~/School/Avionics/perfboard/WIRING.md` and `PERFBOARD-BUILD-GUIDE.
 
 ## The CSV columns
 
-`t_ms` (ms since power-on) · `ax_g ay_g az_g` · `gx_dps gy_dps gz_dps` (gyro offset removed if calibrated) ·
+`t_ms` (ms since power-on) · `ax_g ay_g az_g` (±16 g range) · `gx_dps gy_dps gz_dps` (±2000 °/s range, gyro
+offset removed if calibrated; both filtered on the chip at about 20 Hz, firmware 1.4+) ·
 `imu_temp_c` · `pressure_pa` · `baro_temp_c` · `baro_alt_m` (standard-atmosphere estimate) · `gps_fix gps_sats lat lon
 gps_alt_m gps_speed_mps gps_hacc_m utc` · `rc1_us … rc4_us` (0 = no signal) · `event`
 
