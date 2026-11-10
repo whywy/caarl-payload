@@ -6,41 +6,60 @@
 <title>CAARL Payload</title>
 <style>
 :root {
-  --bg: #f3f4f6; --card: #ffffff; --ink: #111827; --muted: #6b7280; --line: #e5e7eb;
-  --accent: #2563eb; --good: #15803d; --good-bg: #dcfce7; --bad: #b91c1c; --bad-bg: #fee2e2;
-  --warn: #a16207; --warn-bg: #fef9c3; --rec: #dc2626; --accent-strong: #2563eb;
-  --x: #be123c; --y: #15803d; --z: #2563eb; --one: #7c3aed; --muted-strong: #4b5563;
-  --sky: #60a5fa; --ground: #a16207;
+  color-scheme: dark;
+  /* space palette */
+  --bg: #05070f; --card: rgba(11, 18, 34, .82); --ink: #e6ebf5; --muted: #94a3b8; --muted-strong: #cbd5e1; --line: #1f2a44;
+  /* orange accent: text/lines use --accent, filled shapes use --accent-strong with --on-accent text */
+  --accent: #fb923c; --accent-strong: #f97316; --on-accent: #1c0a00; --accent-glow: rgba(249, 115, 22, .35);
+  /* status colours stay distinct from the accent */
+  --good: #4ade80; --good-bg: #14532d73; --bad: #f87171; --bad-bg: #7f1d1d73; --warn: #facc15; --warn-bg: #713f1273; --rec: #dc2626;
+  /* data series */
+  --x: #fb7185; --y: #4ade80; --z: #60a5fa; --one: #c084fc;
+  --sky: #1e3a8a; --ground: #7c2d12;
   --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b0f17; --card: #141a24; --ink: #e5e7eb; --muted: #94a3b8; --line: #263041;
-    --accent: #60a5fa; --good: #4ade80; --good-bg: #14532d55; --bad: #f87171; --bad-bg: #7f1d1d55;
-    --warn: #facc15; --warn-bg: #713f1255; --rec: #dc2626; --accent-strong: #1d4ed8;
-    --x: #fb7185; --y: #4ade80; --z: #60a5fa; --one: #c084fc; --muted-strong: #cbd5e1;
-    --sky: #1d4ed8; --ground: #78350f;
-  }
+  /* spacing scale */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink);
+body { margin: 0; color: var(--ink); min-height: 100vh;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse 60% 45% at 8% 0%, rgba(249, 115, 22, .10), transparent 70%),
+    radial-gradient(ellipse 55% 45% at 92% 100%, rgba(59, 130, 246, .10), transparent 70%),
+    radial-gradient(1px 1px at 23px 41px, rgba(255, 255, 255, .55), transparent),
+    radial-gradient(1px 1px at 141px 97px, rgba(255, 255, 255, .35), transparent),
+    radial-gradient(1.5px 1.5px at 88px 173px, rgba(255, 255, 255, .45), transparent),
+    radial-gradient(1px 1px at 197px 19px, rgba(255, 220, 190, .40), transparent),
+    radial-gradient(1px 1px at 61px 131px, rgba(255, 255, 255, .25), transparent);
+  background-size: 100% 100%, 100% 100%, 220px 220px, 220px 220px, 220px 220px, 220px 220px, 220px 220px;
+  background-attachment: fixed;
   font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif; }
-header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
-  padding: 14px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
-.brand { font-weight: 700; font-size: 18px; display: flex; align-items: center; gap: 10px; }
-.brand small { font-weight: 400; color: var(--muted); font-size: 13px; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { padding: 3px 10px; border-radius: 999px; font-size: 13px; background: var(--line); color: var(--muted-strong); white-space: nowrap; }
+header { display: flex; flex-direction: column; gap: var(--s2); align-items: center; text-align: center;
+  padding: var(--s3) var(--s5); background: rgba(5, 8, 18, .88); position: sticky; top: 0; z-index: 5; }
+header::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent) 35%, var(--accent) 65%, transparent); box-shadow: 0 0 12px var(--accent-glow); }
+.brand { font-family: var(--mono); font-weight: 700; font-size: 18px; letter-spacing: .18em; text-transform: uppercase;
+  display: flex; align-items: center; gap: var(--s3); }
+.brand svg { width: 26px; height: 26px; flex: none; }
+.brand small { font-weight: 400; color: var(--muted); font-size: 12px; letter-spacing: .12em; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.chip { padding: 3px 10px; border-radius: 999px; font-size: 12px; letter-spacing: .03em; background: var(--line); color: var(--muted-strong); white-space: nowrap; }
 .chip.good { background: var(--good-bg); color: var(--good); }
 .chip.bad { background: var(--bad-bg); color: var(--bad); }
 .chip.warn { background: var(--warn-bg); color: var(--warn); }
-main { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; padding: 16px 20px 40px; max-width: 1500px; margin: 0 auto; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
-.card.wide { grid-column: span 2; }
-@media (max-width: 760px) { .card.wide { grid-column: span 1; } main { padding: 12px 16px; } }
-.card h2 { margin: 0 0 12px; font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+main { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--s4); padding: var(--s5); max-width: 1440px; margin: 0 auto; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: var(--s4) var(--s5) var(--s5); min-width: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 10px 30px rgba(0, 0, 0, .35); }
+.third { grid-column: span 2; } .half { grid-column: span 3; } .full { grid-column: span 6; }
+/* tablets: two columns; the odd card out spans both so no row is left half-empty */
+@media (max-width: 1100px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .third, .half { grid-column: span 1; } .full, .solo-md { grid-column: span 2; } }
+@media (max-width: 760px) { main { grid-template-columns: minmax(0, 1fr); padding: var(--s3) var(--s4); }
+  .third, .half, .full, .solo-md { grid-column: span 1; } }
+.card h2 { margin: 0 0 var(--s4); font: 600 13px var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--muted-strong);
+  padding-left: var(--s3); background: linear-gradient(var(--accent), var(--accent)) left center / 3px 14px no-repeat;
   display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.big { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.big { font-family: var(--mono); font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; letter-spacing: -.01em; }
 .big small { font-size: 16px; font-weight: 500; color: var(--muted); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-variant-numeric: tabular-nums; }
 .kv dt { color: var(--muted); }
@@ -53,11 +72,11 @@ main { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr
 .lx { color: var(--x); } .ly { color: var(--y); } .lz { color: var(--z); }
 canvas { width: 100%; display: block; }
 canvas.chart { height: 150px; }
-button { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+button { font: inherit; font-size: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); color: var(--ink);
   padding: 6px 12px; border-radius: 8px; cursor: pointer; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: not-allowed; }
-button.primary { background: var(--accent-strong); color: #fff; border-color: var(--accent-strong); }
+button.primary { background: var(--accent-strong); color: var(--on-accent); border-color: var(--accent-strong); font-weight: 600; }
 button.rec { background: var(--rec); color: #fff; border-color: var(--rec); font-weight: 600; padding: 9px 18px; font-size: 15px; }
 button.small { padding: 3px 9px; font-size: 13px; }
 button.danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
@@ -86,21 +105,21 @@ td.acts button { margin-left: 4px; }
 .progress i { display: block; height: 100%; width: 0; background: var(--accent); }
 .hidden { display: none !important; }
 #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 10px 18px; border-radius: 10px;
-  background: var(--ink); color: var(--card); font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; max-width: 90vw; }
+  background: var(--ink); color: var(--bg); font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; max-width: 90vw; }
 #toast.show { opacity: 1; }
 #offline { background: var(--warn-bg); color: var(--warn); padding: 10px 20px; text-align: center; font-size: 14px; }
-.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
 .stat { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
 .stat b { display: block; font-size: 12px; color: var(--muted); font-weight: 500; }
 .stat span { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .phase { display: inline-block; padding: 4px 14px; border-radius: 10px; background: var(--line); color: var(--muted); }
-.phase.p-BOOST, .phase.p-COAST { background: var(--accent-strong); color: #fff; }
+.phase.p-BOOST, .phase.p-COAST { background: var(--accent-strong); color: var(--on-accent); box-shadow: 0 0 18px var(--accent-glow); }
 .phase.p-DESCENT { background: var(--warn-bg); color: var(--warn); }
 .phase.p-CHUTE, .phase.p-SETTLED { background: var(--good-bg); color: var(--good); }
 .steps { display: flex; gap: 3px; margin: 12px 0 10px; }
-.steps span { flex: 1; text-align: center; font-size: 11px; padding: 3px 0; border-radius: 5px; background: var(--bg); color: var(--muted-strong); border: 1px dashed var(--line); }
+.steps span { font-family: var(--mono); letter-spacing: .04em; flex: 1; text-align: center; font-size: 11px; padding: 3px 0; border-radius: 5px; background: var(--bg); color: var(--muted-strong); border: 1px dashed var(--line); }
 .steps span.done { background: var(--line); color: var(--ink); border-style: solid; }
-.steps span.now { background: var(--accent-strong); color: #fff; font-weight: 600; border: 1px solid var(--accent-strong); }
+.steps span.now { background: var(--accent-strong); color: var(--on-accent); font-weight: 700; border: 1px solid var(--accent-strong); }
 /* keyboard focus, reduced motion, screen-reader-only text, phones */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
@@ -108,7 +127,9 @@ td.acts button { margin-left: 4px; }
   .dot.on { animation: none; box-shadow: 0 0 0 3px var(--bad-bg); }
   .bar i, #toast { transition: none; }
 }
-@media (max-width: 760px) { header { position: static; } }
+@media (max-width: 760px) { header { position: relative; padding: var(--s3) var(--s4); }
+  .brand { font-size: 16px; letter-spacing: .1em; } .brand small { display: none; }
+  .card { padding: var(--s4); } .card h2 { letter-spacing: .08em; } }
 @media (pointer: coarse) { button, select, input[type=text] { min-height: 44px; } button.small { min-width: 44px; } }
 .err { color: var(--bad); font-size: 13px; margin: 8px 0 0; }
 select { font: inherit; font-size: 14px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
@@ -117,7 +138,7 @@ a { color: var(--accent); }
 </head>
 <body>
 <header>
-  <h1 class="brand" style="margin:0"><span aria-hidden="true">🚀</span> CAARL Payload <small>live dashboard</small></h1>
+  <h1 class="brand" style="margin:0"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="5.5" fill="var(--accent-strong)"/><ellipse cx="16" cy="16" rx="14" ry="5.5" fill="none" stroke="var(--accent)" stroke-width="1.5" transform="rotate(-25 16 16)"/><circle cx="28.2" cy="10.4" r="1.6" fill="var(--ink)"/></svg> CAARL Payload <small>live dashboard</small></h1>
   <div class="chips">
     <span class="chip bad" id="c-conn">Not connected</span>
     <span class="chip" id="c-imu">IMU</span>
@@ -133,7 +154,7 @@ a { color: var(--accent); }
 
 <main>
   <!-- Flight phase (firmware 1.5+, log-only) -->
-  <section class="card" id="flight">
+  <section class="card third" id="flight">
     <h2>Flight phase <span class="hint" style="margin:0;text-transform:none;letter-spacing:0">log-only · doesn't steer</span></h2>
     <div class="big"><span class="phase" id="ph">–</span></div>
     <div class="hint" style="margin:6px 0 0" id="ph-note">Needs payload firmware 1.5 or later.</div>
@@ -148,7 +169,7 @@ a { color: var(--accent); }
   </section>
 
   <!-- Orientation -->
-  <section class="card">
+  <section class="card third">
     <h2>Orientation <button class="small" id="btn-cal" title="Keep the board completely still">Calibrate gyro</button></h2>
     <canvas id="horizon" style="height:180px" role="img" aria-label="Artificial horizon showing pitch and roll; values are listed below"></canvas>
     <div class="row" style="justify-content:space-around;margin-top:10px">
@@ -159,8 +180,45 @@ a { color: var(--accent); }
     <p class="hint">Tilt the board to see it move. Angles are worked out from gravity, in the board's own axes.</p>
   </section>
 
+  <!-- Barometer -->
+  <section class="card third">
+    <h2>Altitude <button class="small" id="btn-zero">Set zero here</button></h2>
+    <div class="big" id="alt">– <small>m</small></div>
+    <div class="hint" style="margin:2px 0 10px" id="alt-note">above the spot where you pressed "Set zero"</div>
+    <canvas class="chart" id="ch-alt" role="img" aria-label="Altitude over the last 30 seconds"></canvas>
+    <dl class="kv" style="margin-top:12px">
+      <dt>Pressure</dt><dd id="pres">–</dd>
+      <dt>Barometer temperature</dt><dd id="btemp">–</dd>
+      <dt>IMU temperature</dt><dd id="itemp">–</dd>
+      <dt>Altitude above sea level (estimate)</dt><dd id="altabs">–</dd>
+    </dl>
+  </section>
+
+  <!-- GPS -->
+  <section class="card half">
+    <h2>GPS <a id="map" class="hidden" target="_blank" rel="noopener" style="font-size:13px;text-transform:none;letter-spacing:0">Open map ↗</a></h2>
+    <div class="big" id="fix">–</div>
+    <div class="hint" style="margin:2px 0 12px" id="fix-note"></div>
+    <dl class="kv">
+      <dt>Satellites</dt><dd id="sats">–</dd>
+      <dt>Latitude</dt><dd id="lat">–</dd>
+      <dt>Longitude</dt><dd id="lon">–</dd>
+      <dt>GPS altitude</dt><dd id="galt">–</dd>
+      <dt>Ground speed</dt><dd id="spd">–</dd>
+      <dt>Position accuracy</dt><dd id="hacc">–</dd>
+      <dt>Time (UTC)</dt><dd id="utc">–</dd>
+    </dl>
+  </section>
+
+  <!-- Receiver -->
+  <section class="card half solo-md">
+    <h2>Receiver (ER4)</h2>
+    <div id="rc"></div>
+    <p class="hint" id="rc-note">Each bar is a pulse from 1000 to 2000 µs. The middle line is 1500 µs, which is "stop" for the parachute winches.</p>
+  </section>
+
   <!-- Motion charts -->
-  <section class="card wide">
+  <section class="card full">
     <h2>Motion <span class="legend"><span class="lx">X</span><span class="ly">Y</span><span class="lz">Z</span></span></h2>
     <div class="split">
       <div>
@@ -177,45 +235,8 @@ a { color: var(--accent); }
     <p class="hint">Last 30 seconds. Sitting still, acceleration should total about 1 g (that's gravity) and rotation should sit near 0.</p>
   </section>
 
-  <!-- Barometer -->
-  <section class="card">
-    <h2>Altitude <button class="small" id="btn-zero">Set zero here</button></h2>
-    <div class="big" id="alt">– <small>m</small></div>
-    <div class="hint" style="margin:2px 0 10px" id="alt-note">above the spot where you pressed "Set zero"</div>
-    <canvas class="chart" id="ch-alt" role="img" aria-label="Altitude over the last 30 seconds"></canvas>
-    <dl class="kv" style="margin-top:12px">
-      <dt>Pressure</dt><dd id="pres">–</dd>
-      <dt>Barometer temperature</dt><dd id="btemp">–</dd>
-      <dt>IMU temperature</dt><dd id="itemp">–</dd>
-      <dt>Altitude above sea level (estimate)</dt><dd id="altabs">–</dd>
-    </dl>
-  </section>
-
-  <!-- GPS -->
-  <section class="card">
-    <h2>GPS <a id="map" class="hidden" target="_blank" rel="noopener" style="font-size:13px;text-transform:none;letter-spacing:0">Open map ↗</a></h2>
-    <div class="big" id="fix">–</div>
-    <div class="hint" style="margin:2px 0 12px" id="fix-note"></div>
-    <dl class="kv">
-      <dt>Satellites</dt><dd id="sats">–</dd>
-      <dt>Latitude</dt><dd id="lat">–</dd>
-      <dt>Longitude</dt><dd id="lon">–</dd>
-      <dt>GPS altitude</dt><dd id="galt">–</dd>
-      <dt>Ground speed</dt><dd id="spd">–</dd>
-      <dt>Position accuracy</dt><dd id="hacc">–</dd>
-      <dt>Time (UTC)</dt><dd id="utc">–</dd>
-    </dl>
-  </section>
-
-  <!-- Receiver -->
-  <section class="card">
-    <h2>Receiver (ER4)</h2>
-    <div id="rc"></div>
-    <p class="hint" id="rc-note">Each bar is a pulse from 1000 to 2000 µs. The middle line is 1500 µs, which is "stop" for the parachute winches.</p>
-  </section>
-
   <!-- SD card -->
-  <section class="card wide">
+  <section class="card full">
     <h2>SD card <button class="small" id="btn-refresh">Refresh list</button></h2>
     <div class="split">
       <div>
@@ -249,7 +270,7 @@ a { color: var(--accent); }
   </section>
 
   <!-- File viewer -->
-  <section class="card wide hidden" id="viewer">
+  <section class="card full hidden" id="viewer">
     <h2><span id="v-title">File</span>
       <span class="row" style="gap:8px">
         <button class="small" id="v-save">Save to computer</button>
