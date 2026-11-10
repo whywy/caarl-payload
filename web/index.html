@@ -8,8 +8,8 @@
 :root {
   --bg: #f3f4f6; --card: #ffffff; --ink: #111827; --muted: #6b7280; --line: #e5e7eb;
   --accent: #2563eb; --good: #15803d; --good-bg: #dcfce7; --bad: #b91c1c; --bad-bg: #fee2e2;
-  --warn: #a16207; --warn-bg: #fef9c3; --rec: #dc2626;
-  --x: #e11d48; --y: #16a34a; --z: #2563eb; --one: #7c3aed;
+  --warn: #a16207; --warn-bg: #fef9c3; --rec: #dc2626; --accent-strong: #2563eb;
+  --x: #be123c; --y: #15803d; --z: #2563eb; --one: #7c3aed; --muted-strong: #4b5563;
   --sky: #60a5fa; --ground: #a16207;
   --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace;
 }
@@ -17,8 +17,8 @@
   :root {
     --bg: #0b0f17; --card: #141a24; --ink: #e5e7eb; --muted: #94a3b8; --line: #263041;
     --accent: #60a5fa; --good: #4ade80; --good-bg: #14532d55; --bad: #f87171; --bad-bg: #7f1d1d55;
-    --warn: #facc15; --warn-bg: #713f1255; --rec: #ef4444;
-    --x: #fb7185; --y: #4ade80; --z: #60a5fa; --one: #c084fc;
+    --warn: #facc15; --warn-bg: #713f1255; --rec: #dc2626; --accent-strong: #1d4ed8;
+    --x: #fb7185; --y: #4ade80; --z: #60a5fa; --one: #c084fc; --muted-strong: #cbd5e1;
     --sky: #1d4ed8; --ground: #78350f;
   }
 }
@@ -30,7 +30,7 @@ header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify
 .brand { font-weight: 700; font-size: 18px; display: flex; align-items: center; gap: 10px; }
 .brand small { font-weight: 400; color: var(--muted); font-size: 13px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { padding: 3px 10px; border-radius: 999px; font-size: 13px; background: var(--line); color: var(--muted); white-space: nowrap; }
+.chip { padding: 3px 10px; border-radius: 999px; font-size: 13px; background: var(--line); color: var(--muted-strong); white-space: nowrap; }
 .chip.good { background: var(--good-bg); color: var(--good); }
 .chip.bad { background: var(--bad-bg); color: var(--bad); }
 .chip.warn { background: var(--warn-bg); color: var(--warn); }
@@ -57,7 +57,7 @@ button { font: inherit; font-size: 14px; border: 1px solid var(--line); backgrou
   padding: 6px 12px; border-radius: 8px; cursor: pointer; }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: not-allowed; }
-button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.primary { background: var(--accent-strong); color: #fff; border-color: var(--accent-strong); }
 button.rec { background: var(--rec); color: #fff; border-color: var(--rec); font-weight: 600; padding: 9px 18px; font-size: 15px; }
 button.small { padding: 3px 9px; font-size: 13px; }
 button.danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
@@ -93,29 +93,64 @@ td.acts button { margin-left: 4px; }
 .stat { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
 .stat b { display: block; font-size: 12px; color: var(--muted); font-weight: 500; }
 .stat span { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.phase { display: inline-block; padding: 4px 14px; border-radius: 10px; background: var(--line); color: var(--muted); }
+.phase.p-BOOST, .phase.p-COAST { background: var(--accent-strong); color: #fff; }
+.phase.p-DESCENT { background: var(--warn-bg); color: var(--warn); }
+.phase.p-CHUTE, .phase.p-SETTLED { background: var(--good-bg); color: var(--good); }
+.steps { display: flex; gap: 3px; margin: 12px 0 10px; }
+.steps span { flex: 1; text-align: center; font-size: 11px; padding: 3px 0; border-radius: 5px; background: var(--bg); color: var(--muted-strong); border: 1px dashed var(--line); }
+.steps span.done { background: var(--line); color: var(--ink); border-style: solid; }
+.steps span.now { background: var(--accent-strong); color: #fff; font-weight: 600; border: 1px solid var(--accent-strong); }
+/* keyboard focus, reduced motion, screen-reader-only text, phones */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .dot.on { animation: none; box-shadow: 0 0 0 3px var(--bad-bg); }
+  .bar i, #toast { transition: none; }
+}
+@media (max-width: 760px) { header { position: static; } }
+@media (pointer: coarse) { button, select, input[type=text] { min-height: 44px; } button.small { min-width: 44px; } }
+.err { color: var(--bad); font-size: 13px; margin: 8px 0 0; }
 select { font: inherit; font-size: 14px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 a { color: var(--accent); }
 </style>
 </head>
 <body>
 <header>
-  <div class="brand">🚀 CAARL Payload <small>live dashboard</small></div>
+  <h1 class="brand" style="margin:0"><span aria-hidden="true">🚀</span> CAARL Payload <small>live dashboard</small></h1>
   <div class="chips">
     <span class="chip bad" id="c-conn">Not connected</span>
     <span class="chip" id="c-imu">IMU</span>
+    <span class="chip" id="c-gyro">Gyro</span>
     <span class="chip" id="c-baro">Barometer</span>
     <span class="chip" id="c-gps">GPS</span>
     <span class="chip" id="c-sd">SD card</span>
     <span class="chip" id="c-rc">Receiver</span>
+    <span class="chip" id="c-fw">Firmware</span>
   </div>
 </header>
 <div id="offline">Looking for the payload… Plug in the USB cable, and make sure the Arduino Serial Monitor is closed.</div>
 
 <main>
+  <!-- Flight phase (firmware 1.5+, log-only) -->
+  <section class="card" id="flight">
+    <h2>Flight phase <span class="hint" style="margin:0;text-transform:none;letter-spacing:0">log-only · doesn't steer</span></h2>
+    <div class="big"><span class="phase" id="ph">–</span></div>
+    <div class="hint" style="margin:6px 0 0" id="ph-note">Needs payload firmware 1.5 or later.</div>
+    <div class="steps" id="ph-steps" role="list" aria-label="Flight phases"></div>
+    <dl class="kv">
+      <dt>Vertical speed</dt><dd id="vz">–</dd>
+      <dt>Height above the pad</dt><dd id="agl">–</dd>
+    </dl>
+    <canvas class="chart" id="ch-vz" style="height:110px;margin-top:10px" role="img" aria-label="Vertical speed over the last 30 seconds"></canvas>
+    <p class="hint">The payload's own reading of where it is in the flight, from the barometer and accelerometer.
+      Height is measured from where it sat at power-up (not the "Set zero" button). On a desk it should stay in PAD.</p>
+  </section>
+
   <!-- Orientation -->
   <section class="card">
     <h2>Orientation <button class="small" id="btn-cal" title="Keep the board completely still">Calibrate gyro</button></h2>
-    <canvas id="horizon" style="height:180px"></canvas>
+    <canvas id="horizon" style="height:180px" role="img" aria-label="Artificial horizon showing pitch and roll; values are listed below"></canvas>
     <div class="row" style="justify-content:space-around;margin-top:10px">
       <div><div class="hint" style="margin:0">Pitch</div><div class="big" id="pitch">–</div></div>
       <div><div class="hint" style="margin:0">Roll</div><div class="big" id="roll">–</div></div>
@@ -131,12 +166,12 @@ a { color: var(--accent); }
       <div>
         <div class="row" style="justify-content:space-between"><b>Acceleration</b><span class="hint" style="margin:0">g</span></div>
         <div class="axes"><div class="axis"><b class="lx">X</b><span id="ax">–</span></div><div class="axis"><b class="ly">Y</b><span id="ay">–</span></div><div class="axis"><b class="lz">Z</b><span id="az">–</span></div></div>
-        <canvas class="chart" id="ch-acc"></canvas>
+        <canvas class="chart" id="ch-acc" role="img" aria-label="Acceleration on X, Y and Z over the last 30 seconds"></canvas>
       </div>
       <div>
         <div class="row" style="justify-content:space-between"><b>Rotation rate</b><span class="hint" style="margin:0">°/s</span></div>
         <div class="axes"><div class="axis"><b class="lx">X</b><span id="gx">–</span></div><div class="axis"><b class="ly">Y</b><span id="gy">–</span></div><div class="axis"><b class="lz">Z</b><span id="gz">–</span></div></div>
-        <canvas class="chart" id="ch-gyr"></canvas>
+        <canvas class="chart" id="ch-gyr" role="img" aria-label="Rotation rate on X, Y and Z over the last 30 seconds"></canvas>
       </div>
     </div>
     <p class="hint">Last 30 seconds. Sitting still, acceleration should total about 1 g (that's gravity) and rotation should sit near 0.</p>
@@ -147,7 +182,7 @@ a { color: var(--accent); }
     <h2>Altitude <button class="small" id="btn-zero">Set zero here</button></h2>
     <div class="big" id="alt">– <small>m</small></div>
     <div class="hint" style="margin:2px 0 10px" id="alt-note">above the spot where you pressed "Set zero"</div>
-    <canvas class="chart" id="ch-alt"></canvas>
+    <canvas class="chart" id="ch-alt" role="img" aria-label="Altitude over the last 30 seconds"></canvas>
     <dl class="kv" style="margin-top:12px">
       <dt>Pressure</dt><dd id="pres">–</dd>
       <dt>Barometer temperature</dt><dd id="btemp">–</dd>
@@ -188,6 +223,7 @@ a { color: var(--accent); }
           <button class="rec" id="btn-rec">● Start recording</button>
           <div><span class="dot" id="rec-dot"></span> <span id="rec-state">Not recording</span></div>
         </div>
+        <p class="err hidden" id="rec-err" role="alert"></p>
         <dl class="kv" style="margin-top:14px">
           <dt>File</dt><dd id="rec-file">–</dd>
           <dt>Time recorded</dt><dd id="rec-time">–</dd>
@@ -196,7 +232,7 @@ a { color: var(--accent); }
           <dt>Card</dt><dd id="card">–</dd>
         </dl>
         <div class="row" style="margin-top:14px;flex-wrap:nowrap">
-          <input type="text" id="mark-text" maxlength="60" placeholder="Note, e.g. 'lifted board'">
+          <input type="text" id="mark-text" maxlength="60" placeholder="Note, e.g. 'lifted board'" aria-label="Note to add to the recording">
           <button id="btn-mark" disabled>Add note</button>
         </div>
         <p class="hint">Recording saves 20 readings a second to a new LOGnnn.CSV file. Notes go into the "event" column so you can find moments later.</p>
@@ -225,11 +261,12 @@ a { color: var(--accent); }
       <label for="v-col">Plot</label> <select id="v-col"></select>
       <span class="hint" style="margin:0">against time (seconds)</span>
     </div>
-    <canvas class="chart" id="ch-file" style="height:240px"></canvas>
+    <canvas class="chart" id="ch-file" style="height:240px" role="img" aria-label="Chart of the selected column against time"></canvas>
     <div id="v-events"></div>
   </section>
 </main>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<div class="sr-only" id="ph-live" aria-live="polite"></div>
 
 <script>
 "use strict";
@@ -332,6 +369,7 @@ const charts = {
   acc: new Chart($("ch-acc"), ["--x", "--y", "--z"], { minRange: 0.2 }),
   gyr: new Chart($("ch-gyr"), ["--x", "--y", "--z"], { minRange: 4 }),
   alt: new Chart($("ch-alt"), ["--one"], { minRange: 0.5 }),
+  vz: new Chart($("ch-vz"), ["--accent"], { minRange: 1 }),
   file: new Chart($("ch-file"), ["--accent"], {}),
 };
 let connected = false, connPort = "", info = null, last = null, recording = false, lastSeen = 0;
@@ -342,16 +380,62 @@ function onConn(m) {
   connected = m.connected; connPort = m.port || "";
   setChip("c-conn", connected ? "good" : "bad", connected ? "Connected · " + m.port : "Not connected");
   $("offline").classList.toggle("hidden", connected);
-  if (!connected) { info = null; for (const id of ["c-imu", "c-baro", "c-gps", "c-sd", "c-rc"]) setChip(id, ""); }
+  if (!connected) { info = null; for (const id of ["c-imu", "c-gyro", "c-baro", "c-gps", "c-sd", "c-rc", "c-fw"]) setChip(id, ""); }
 }
 function onInfo(m) {
   info = m;
   setChip("c-imu", m.imu ? "good" : "bad", m.imu ? "IMU ✓" : "IMU missing");
+  $("c-imu").title = m.accRangeG ? `Ranges ±${m.accRangeG} g, ±${m.gyroRangeDps} °/s` +
+    (m.dlpf !== undefined ? `, on-chip filter setting ${m.dlpf}` : "") : "";
+  setGyroChip(m.imu, m.gyroBias);
+  setChip("c-fw", "", m.fw ? "Firmware " + m.fw : "Firmware ?");
   setChip("c-baro", m.baro ? "good" : "bad", m.baro ? "Barometer ✓" : "Barometer missing");
   setChip("c-gps", m.gps ? "good" : "bad", m.gps ? "GPS ✓" : "GPS missing");
   setChip("c-sd", m.sd ? "good" : "bad", m.sd ? "SD card ✓" : "No SD card");
   $("card").textContent = m.sd ? `${bytes(m.sdUsed)} used of ${bytes(m.sdTotal)}` : "no card";
   if (m.sd) refreshFiles();
+}
+
+// Gyro offset: measured automatically at power-up if the board was still (firmware 1.3+),
+// or with the Calibrate gyro button. All zeros = not calibrated.
+function setGyroChip(haveImu, bias) {
+  if (!haveImu || !bias) { setChip("c-gyro", "", "Gyro"); return; }
+  const cal = bias.some(v => v !== 0);
+  setChip("c-gyro", cal ? "good" : "warn", cal ? "Gyro ✓ calibrated" : "Gyro not calibrated");
+  $("c-gyro").title = cal ? `Offset ${bias.map(v => v.toFixed(2)).join(", ")} °/s is being removed`
+    : "It was moving at power-up. Keep it still and press Calibrate gyro.";
+}
+
+// ---------- flight phase (firmware 1.5+; log-only, it never moves a servo) ----------
+const PHASES = ["PAD", "BOOST", "COAST", "DESCENT", "CHUTE", "SETTLED", "LANDED"];
+const PHASE_NOTE = {
+  PAD: "Waiting on the ground.",
+  BOOST: "Motor burning.",
+  COAST: "Motor out, still climbing.",
+  DESCENT: "Past the highest point, coming down. Chute not confirmed yet.",
+  CHUTE: "Chute open (opening shock or a steady descent).",
+  SETTLED: "Canopy has stopped swinging. Steering would start here in a later version.",
+  LANDED: "On the ground.",
+};
+$("ph-steps").innerHTML = PHASES.map(p => `<span role="listitem" id="st-${p}">${p}</span>`).join("");
+let lastPhase = null;
+function onFlight(d) {
+  if (d.ph === undefined) return;
+  const i = PHASES.indexOf(d.ph);
+  $("ph").textContent = d.ph; $("ph").className = "phase p-" + d.ph;
+  $("ph-note").textContent = PHASE_NOTE[d.ph] || "";
+  PHASES.forEach((p, k) => {
+    const s = $("st-" + p); s.className = k < i ? "done" : k === i ? "now" : "";
+    if (k === i) s.setAttribute("aria-current", "step"); else s.removeAttribute("aria-current");
+  });
+  if (d.ph !== lastPhase) {  // announce changes only, never every reading
+    if (lastPhase !== null) $("ph-live").textContent = `Flight phase: ${d.ph}. ${PHASE_NOTE[d.ph] || ""}`;
+    lastPhase = d.ph;
+  }
+  const dir = Math.abs(d.vz) < 0.3 ? "" : d.vz > 0 ? " ↑" : " ↓";
+  $("vz").textContent = Math.abs(d.vz).toFixed(1) + " m/s" + dir;
+  $("agl").textContent = d.agl.toFixed(1) + " m";
+  charts.vz.push(d.t / 1000, [d.vz]);
 }
 
 function onData(d) {
@@ -381,6 +465,7 @@ function onData(d) {
     $("altabs").textContent = f(d.alt, 0) + " m";
   }
   if (d.gps) onGps(d.gps);
+  onFlight(d);
   onRc(d.rc);
   onLog(d.log);
 }
@@ -434,6 +519,8 @@ function onLog(l) {
   $("btn-rec").classList.toggle("rec", !recording); $("btn-rec").classList.toggle("primary", recording);
   $("rec-dot").classList.toggle("on", recording);
   $("rec-state").textContent = recording ? "Recording" : "Not recording";
+  $("rec-err").textContent = !recording && l.err ? "⚠ " + l.err : "";
+  $("rec-err").classList.toggle("hidden", recording || !l.err);
   $("btn-mark").disabled = !recording;
   if (recording) {
     $("rec-file").textContent = l.file; $("rec-time").textContent = dur(l.secs);
@@ -522,10 +609,11 @@ function showViewer(name, text) {
   }
   const si = col("gps_sats");
   if (si >= 0) stats.push(["Most satellites", Math.max(0, ...rows.map(r => num(r, si)).filter(Number.isFinite))]);
+  stats.push(...flightSummary(rows, col, num));
   $("v-stats").innerHTML = stats.map(([k, v]) => `<div class="stat"><b>${k}</b><span>${v}</span></div>`).join("");
 
   const sel = $("v-col"); sel.innerHTML = "";
-  head.forEach((h, i) => { if (h !== "t_ms" && h !== "utc" && h !== "event") { const o = document.createElement("option"); o.value = i; o.textContent = h; sel.appendChild(o); } });
+  head.forEach((h, i) => { if (!["t_ms", "utc", "event", "phase"].includes(h)) { const o = document.createElement("option"); o.value = i; o.textContent = h; sel.appendChild(o); } });
   if (ai >= 0) sel.value = ai;
   plotColumn();
 
@@ -535,6 +623,32 @@ function showViewer(name, text) {
   ev.innerHTML = evs.length ? "<h3 style='font-size:14px;margin:16px 0 6px'>Notes</h3>" : "";
   for (const r of evs) { const p = document.createElement("div"); p.className = "hint"; p.textContent = `${((num(r, ti) - num(rows[0], ti)) / 1000).toFixed(1)} s: ${r[ei]}`; ev.appendChild(p); }
   $("viewer").scrollIntoView({ behavior: "smooth" });
+}
+// Flight summary from the payload's own PHASE entries in the "event" column (firmware 1.5+).
+function flightSummary(rows, col, num) {
+  const ei = col("event"), ti = col("t_ms"), pi = col("phase"), vi = col("vz_mps");
+  if (pi < 0 || ei < 0) return [];
+  const t0 = num(rows[0], ti), at = {};
+  let apogee = null, chuteHow = "";
+  for (const r of rows) {
+    const ev = r[ei] || "";
+    for (const m of ev.matchAll(/PHASE (\w+): ([^|]*)/g)) {
+      if (at[m[1]] === undefined) at[m[1]] = (num(r, ti) - t0) / 1000;
+      if (m[1] === "DESCENT") { const a = m[2].match(/apogee ([\d.]+) m/); if (a) apogee = parseFloat(a[1]); }
+      if (m[1] === "CHUTE") chuteHow = /shock/.test(m[2]) ? "shock" : /steady/.test(m[2]) ? "steady descent" : "";
+    }
+  }
+  if (at.BOOST === undefined) return [["Flight", "no launch detected"]];
+  const out = [["Launch", at.BOOST.toFixed(1) + " s"]];
+  if (apogee !== null) out.push(["Apogee", `${apogee.toFixed(1)} m at ${at.DESCENT.toFixed(1)} s`]);
+  else out.push(["Apogee", "not detected"]);
+  out.push(["Chute open", at.CHUTE !== undefined ? `${at.CHUTE.toFixed(1)} s (${chuteHow})` : "not detected"]);
+  if (vi >= 0) {
+    const v = rows.filter(r => r[pi] === "SETTLED").map(r => -num(r, vi)).filter(x => Number.isFinite(x) && x > 0.5);
+    if (v.length) out.push(["Descent under canopy", (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) + " m/s"]);
+  }
+  if (at.LANDED !== undefined) out.push(["Flight time", (at.LANDED - at.BOOST).toFixed(1) + " s"]);
+  return out;
 }
 function plotColumn() {
   if (!parsed) return;
@@ -560,7 +674,7 @@ $("mark-text").addEventListener("keydown", e => { if (e.key === "Enter") $("btn-
 $("btn-cal").onclick = async () => {
   toast("Keep the board still…", 3000); $("btn-cal").disabled = true;
   const r = await cmd("CAL GYRO");
-  if (r.type === "ok") toast(`Gyro calibrated (offset ${r.bias.map(v => v.toFixed(2)).join(", ")} °/s)`);
+  if (r.type === "ok") { toast(`Gyro calibrated (offset ${r.bias.map(v => v.toFixed(2)).join(", ")} °/s)`); setGyroChip(true, r.bias); }
   $("btn-cal").disabled = false;
 };
 $("btn-zero").onclick = () => { setZero(); toast("Altitude zeroed here"); };
