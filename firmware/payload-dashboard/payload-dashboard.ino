@@ -21,6 +21,14 @@
 //   GET /<file>     send a file to the PC (base64, in chunks)
 //   DEL /<file>     delete a file
 //   CAL GYRO        measure the gyro's offset (keep the board still for 1 s)
+//   SERVO MODE MANUAL | SERVO MODE AUTO
+//                   who may drive the parachute servos (saved on the payload, see servo_mode.h).
+//                   MANUAL (default): the servos always follow the ER4 sticks (CH1, CH2).
+//                   AUTO: the transmitter switch on CH3 chooses manual or auto in flight.
+//
+// Servo signals come FROM the ESP32 (GPIO25 -> servo 1, GPIO26 -> servo 2), not straight from
+// the ER4: see perfboard/WIRING.md "Servo control through the ESP32". In manual mode the ESP32
+// copies the ER4's CH1/CH2 through; if it resets, the servos get no pulses and stop.
 //
 // The gyro offset is also measured automatically at power-up (AUTO_CAL_GYRO), but only if
 // the board is still; the first row of each recording says whether it was applied.
@@ -31,9 +39,11 @@
 #include <SD.h>
 #include <Adafruit_BMP3XX.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
+#include <Preferences.h>
 #include "flight_phase.h"  // log-only flight phase detection (never moves a servo)
+#include "servo_mode.h"    // manual (ER4) / auto servo control
 
-const char *FW_VERSION = "1.5";
+const char *FW_VERSION = "1.6";
 const bool AUTO_LOG = true;      // start recording at power-up; set false for PC-only recording
 const bool AUTO_CAL_GYRO = true; // measure the gyro offset at power-up if the board is still
 const float STILL_GYRO_DPS = 2.0f, STILL_ACC_G = 0.05f;  // max swing during that 1 s to count as "still"
@@ -46,6 +56,8 @@ const int LED_PIN = 13;
 const uint32_t BAUD = 921600;
 const int SDA_PIN = 21, SCL_PIN = 22, SD_CS = 5;
 const int RC_PINS[4] = {36, 39, 34, 35};
+const int SERVO_PINS[2] = {25, 26};  // ESP32 -> servo signal pins (perfboard D25, D28)
+const int SERVO_HZ = 50, SERVO_BITS = 14;
 const uint32_t SAMPLE_MS = 50;   // 20 readings a second, all of them recorded
 const int STREAM_EVERY = 2;      // every 2nd reading goes to the PC (10 a second)
 const uint32_t FLUSH_MS = 1000;  // save the recording to the card every second
@@ -118,6 +130,17 @@ void IRAM_ATTR rcIsr(void *arg) {
   }
 }
 
+// Latest pulse width on each receiver channel in us; 0 = no pulse in the last 0.1 s.
+void readRc(uint16_t rc[4]) {
+  uint32_t now = micros();
+  for (int i = 0; i < 4; i++) {
+    noInterrupts();
+    uint32_t w = rcWidth[i], seen = rcSeen[i];
+    interrupts();
+    rc[i] = (seen && now - seen < 100000) ? w : 0;
+  }
+}
+
 // ---------- State ----------
 Adafruit_BMP3XX bmp;
 SFE_UBLOX_GNSS gps;
@@ -138,6 +161,8 @@ char logName[16] = "";
 uint32_t logRows = 0, logStartMs = 0, lastFlush = 0;
 char pendingMark[256] = "";
 PhaseDetector phaseDet;
+ServoModeControl servoCtl;
+Preferences prefs;  // settings kept in the ESP32's flash between power-ups
 char logError[64] = "";
 bool autoPending = false;  // auto-record still waiting for the SD card after power-up
 
@@ -174,18 +199,18 @@ void sendInfo() {
   if (!haveSd) haveSd = SD.begin(SD_CS);  // lets you insert a card after boot
   Serial.printf("{\"type\":\"info\",\"fw\":\"%s\",\"imu\":%s,\"imuId\":%u,\"baro\":%s,\"gps\":%s,\"sd\":%s,"
                 "\"sdTotal\":%llu,\"sdUsed\":%llu,\"rate\":%lu,\"gyroBias\":[%.3f,%.3f,%.3f],"
-                "\"accRangeG\":%d,\"gyroRangeDps\":%d,\"dlpf\":%u}\n",
+                "\"accRangeG\":%d,\"gyroRangeDps\":%d,\"dlpf\":%u,\"servoAllow\":\"%s\"}\n",
                 FW_VERSION, haveImu ? "true" : "false", imuId, haveBaro ? "true" : "false",
                 haveGps ? "true" : "false", haveSd ? "true" : "false",
                 haveSd ? SD.totalBytes() : 0ULL, haveSd ? SD.usedBytes() : 0ULL,
                 (unsigned long)(1000 / SAMPLE_MS), gyroBias[0], gyroBias[1], gyroBias[2],
-                accRangeG, gyroRangeDps, imuDlpf);
+                accRangeG, gyroRangeDps, imuDlpf, servoCtl.allowAuto ? "auto" : "manual");
 }
 
 // ---------- SD recording ----------
 const char *CSV_HEADER =
     "t_ms,ax_g,ay_g,az_g,gx_dps,gy_dps,gz_dps,imu_temp_c,pressure_pa,baro_temp_c,baro_alt_m,"
-    "gps_fix,gps_sats,lat,lon,gps_alt_m,gps_speed_mps,gps_hacc_m,utc,rc1_us,rc2_us,rc3_us,rc4_us,phase,vz_mps,event";
+    "gps_fix,gps_sats,lat,lon,gps_alt_m,gps_speed_mps,gps_hacc_m,utc,rc1_us,rc2_us,rc3_us,rc4_us,phase,vz_mps,servo_mode,srv1_us,srv2_us,event";
 
 void logStart() {
   if (logging) { sendErr("LOG START", "already recording"); return; }
@@ -232,9 +257,10 @@ void logRow() {
   else n += snprintf(line + n, sizeof line - n, ",,,,,,,");
   if (r.baroOk) n += snprintf(line + n, sizeof line - n, "%.1f,%.2f,%.2f,", r.p, r.bT, r.alt);
   else n += snprintf(line + n, sizeof line - n, ",,,");
-  n += snprintf(line + n, sizeof line - n, "%d,%d,%.7f,%.7f,%.2f,%.2f,%.2f,%s,%u,%u,%u,%u,%s,%.2f,%s",
+  n += snprintf(line + n, sizeof line - n, "%d,%d,%.7f,%.7f,%.2f,%.2f,%.2f,%s,%u,%u,%u,%u,%s,%.2f,%s,%u,%u,%s",
                 r.fix, r.sv, r.lat, r.lon, r.gAlt, r.spd, r.hAcc, r.utc,
-                r.rc[0], r.rc[1], r.rc[2], r.rc[3], phaseName(phaseDet.phase), phaseDet.vz, pendingMark);
+                r.rc[0], r.rc[1], r.rc[2], r.rc[3], phaseName(phaseDet.phase), phaseDet.vz,
+                servoModeName(servoCtl.mode), servoCtl.out[0], servoCtl.out[1], pendingMark);
   pendingMark[0] = 0;
   if (logFile.println(line) == 0) { logStop("SD write failed: is the card still in?"); return; }
   logRows++;
@@ -361,6 +387,12 @@ void handleCommand(char *line) {
   else if (!strncmp(line, "GET ", 4)) cmdGet(line + 4);
   else if (!strncmp(line, "DEL ", 4)) cmdDel(line + 4);
   else if (!strcmp(line, "CAL GYRO")) cmdCalGyro();
+  else if (!strcmp(line, "SERVO MODE MANUAL") || !strcmp(line, "SERVO MODE AUTO")) {
+    servoCtl.allowAuto = !strcmp(line, "SERVO MODE AUTO");
+    prefs.putBool("autoOK", servoCtl.allowAuto);
+    addNote(servoCtl.allowAuto ? "SERVO setting: auto allowed (CH3 switch chooses)" : "SERVO setting: manual only");
+    sendOk("SERVO MODE", servoCtl.allowAuto ? ",\"allow\":\"auto\"" : ",\"allow\":\"manual\"");
+  }
   else if (line[0]) sendErr("?", "unknown command");
 }
 
@@ -414,17 +446,11 @@ void readSensors() {
       snprintf(r.utc, sizeof r.utc, "%02d:%02d:%02d", gps.getHour(), gps.getMinute(), gps.getSecond());
   }
 
-  uint32_t now = micros();
-  for (int i = 0; i < 4; i++) {
-    noInterrupts();
-    uint32_t w = rcWidth[i], seen = rcSeen[i];
-    interrupts();
-    r.rc[i] = (seen && now - seen < 100000) ? w : 0;  // 0 = no pulse in the last 0.1 s
-  }
+  readRc(r.rc);
 }
 
 void streamReading(uint32_t loopMs) {
-  char line[640];
+  char line[768];
   int n = snprintf(line, sizeof line, "{\"type\":\"d\",\"t\":%lu", (unsigned long)r.t);
   if (r.imuOk)
     n += snprintf(line + n, sizeof line - n, ",\"a\":[%.4f,%.4f,%.4f],\"g\":[%.2f,%.2f,%.2f],\"it\":%.2f",
@@ -436,6 +462,9 @@ void streamReading(uint32_t loopMs) {
                   ",\"gps\":{\"fix\":%d,\"sv\":%d,\"lat\":%.7f,\"lon\":%.7f,\"h\":%.2f,\"spd\":%.2f,\"hacc\":%.2f,\"utc\":\"%s\"}",
                   r.fix, r.sv, r.lat, r.lon, r.gAlt, r.spd, r.hAcc, r.utc);
   n += snprintf(line + n, sizeof line - n, ",\"rc\":[%u,%u,%u,%u]", r.rc[0], r.rc[1], r.rc[2], r.rc[3]);
+  n += snprintf(line + n, sizeof line - n, ",\"srv\":{\"mode\":\"%s\",\"allow\":\"%s\",\"sw\":\"%s\",\"link\":%s,\"out\":[%u,%u]}",
+                servoModeName(servoCtl.mode), servoCtl.allowAuto ? "auto" : "manual", switchName(servoCtl.sw),
+                servoCtl.link ? "true" : "false", servoCtl.out[0], servoCtl.out[1]);
   n += snprintf(line + n, sizeof line - n, ",\"ph\":\"%s\",\"vz\":%.2f,\"agl\":%.1f",
                 phaseName(phaseDet.phase), phaseDet.vz, phaseDet.agl());
   n += snprintf(line + n, sizeof line - n,
@@ -484,6 +513,13 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
+  prefs.begin("caarl", false);
+  servoCtl.allowAuto = prefs.getBool("autoOK", false);  // default: manual only
+  for (int i = 0; i < 2; i++) {
+    ledcAttach(SERVO_PINS[i], SERVO_HZ, SERVO_BITS);
+    ledcWrite(SERVO_PINS[i], 0);  // no pulses until there's a real command
+  }
+
   if (AUTO_LOG) {
     if (haveSd) {
       logStart();
@@ -524,19 +560,43 @@ void updateLed(uint32_t now) {
   digitalWrite(LED_PIN, on);
 }
 
+// Append a note to the "event" column of the next recorded row.
+void addNote(const char *text) {
+  if (!logging) return;
+  int n = strlen(pendingMark);
+  snprintf(pendingMark + n, sizeof pendingMark - n, "%s%s", n ? " | " : "", text);
+}
+
+// Servo outputs. Runs every loop so manual control follows the sticks without delay.
+void updateServos() {
+  static const uint16_t AUTO_STOP[2] = {0, 0};  // steering isn't written yet: auto = stopped
+  static uint16_t written[2] = {0xFFFF, 0xFFFF};
+  uint16_t rc[4];
+  readRc(rc);
+  if (servoCtl.update(rc, AUTO_STOP)) {
+    char note[80];
+    snprintf(note, sizeof note, "SERVO MODE %s (switch %s)", servoModeName(servoCtl.mode), switchName(servoCtl.sw));
+    addNote(note);
+  }
+  for (int i = 0; i < 2; i++) {
+    uint16_t us = servoCtl.out[i];
+    if (us == written[i]) continue;
+    written[i] = us;
+    ledcWrite(SERVO_PINS[i], us ? (uint32_t)us * ((1u << SERVO_BITS) - 1) / 20000u : 0);
+  }
+}
+
 // Log-only flight phase detection: changes go into the "event" column; the current phase,
 // vertical speed and height above the pad are in every row and in the PC stream.
 void updatePhase() {
   float aMag = r.imuOk ? sqrtf(r.a[0] * r.a[0] + r.a[1] * r.a[1] + r.a[2] * r.a[2]) : 0;
-  if (!phaseDet.update(r.t, r.imuOk, aMag, r.baroOk, r.alt)) return;
-  if (!logging) return;
-  int n = strlen(pendingMark);
-  snprintf(pendingMark + n, sizeof pendingMark - n, "%s%s", n ? " | " : "", phaseDet.note);
+  if (phaseDet.update(r.t, r.imuOk, aMag, r.baroOk, r.alt)) addNote(phaseDet.note);
 }
 
 void loop() {
   static uint32_t next = 0, count = 0;
   readCommands();
+  updateServos();
   uint32_t now = millis();
   updateLed(now);
   if ((int32_t)(now - next) < 0) return;

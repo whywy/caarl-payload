@@ -148,6 +148,12 @@ ol.ev li { display: grid; grid-template-columns: 5.5em 1fr; gap: var(--s2); }
 ol.ev li b { color: var(--accent); font-weight: 600; text-align: right; }
 .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); }
 @media (max-width: 760px) { .settings, .cols { grid-template-columns: minmax(0, 1fr); } }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: var(--s2) 0 var(--s3); }
+.seg button { border: 0; border-radius: 0; padding: 8px 10px; background: transparent; color: var(--muted-strong); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-checked=true] { background: var(--accent-strong); color: var(--on-accent); font-weight: 700; }
+.mode-pill { display: inline-block; padding: 1px 10px; border-radius: 999px; font: 600 12px var(--mono); background: var(--line); color: var(--ink); }
+.mode-pill.auto { background: var(--accent-strong); color: var(--on-accent); }
 select { font: inherit; font-size: 14px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 a { color: var(--accent); }
 </style>
@@ -228,9 +234,25 @@ a { color: var(--accent); }
 
   <!-- Receiver -->
   <section class="card half solo-md">
-    <h2>Receiver (ER4)</h2>
+    <h2>Receiver &amp; servos</h2>
     <div id="rc"></div>
     <p class="hint" id="rc-note">Each bar is a pulse from 1000 to 2000 µs. The middle line is 1500 µs, which is "stop" for the parachute winches.</p>
+    <h3 class="sub" style="margin-top:16px">Servo control</h3>
+    <div id="srv-box">
+      <div class="seg" role="radiogroup" aria-label="Who may drive the servos">
+        <button role="radio" id="sm-manual" aria-checked="true">Manual only (ER4)</button>
+        <button role="radio" id="sm-auto" aria-checked="false">Auto allowed</button>
+      </div>
+      <dl class="kv">
+        <dt>Driving the servos now</dt><dd><span class="mode-pill" id="srv-mode">–</span></dd>
+        <dt>Transmitter switch (CH3)</dt><dd id="srv-sw">–</dd>
+        <dt>Servo 1 output</dt><dd id="srv-o1">–</dd>
+        <dt>Servo 2 output</dt><dd id="srv-o2">–</dd>
+      </dl>
+      <p class="hint" id="srv-note">Saved on the payload. "Manual only": the servos always follow your sticks.
+        "Auto allowed": the CH3 switch on your transmitter picks manual or auto, and flipping it to manual always takes over.</p>
+    </div>
+    <p class="hint hidden" id="srv-old">Servo control needs payload firmware 1.6 or later.</p>
   </section>
 
   <!-- Motion charts -->
@@ -454,6 +476,7 @@ function onInfo(m) {
   $("c-imu").title = m.accRangeG ? `Ranges ±${m.accRangeG} g, ±${m.gyroRangeDps} °/s` +
     (m.dlpf !== undefined ? `, on-chip filter setting ${m.dlpf}` : "") : "";
   setGyroChip(m.imu, m.gyroBias);
+  setServoAllow(m.servoAllow);
   setChip("c-fw", "", m.fw ? "Firmware " + m.fw : "Firmware ?");
   setChip("c-baro", m.baro ? "good" : "bad", m.baro ? "Barometer ✓" : "Barometer missing");
   setChip("c-gps", m.gps ? "good" : "bad", m.gps ? "GPS ✓" : "GPS missing");
@@ -532,6 +555,7 @@ function onData(d) {
   }
   if (d.gps) onGps(d.gps);
   onFlight(d);
+  onServo(d.srv);
   onRc(d.rc);
   onLog(d.log);
 }
@@ -562,7 +586,7 @@ function onGps(g) {
 
 function buildRc() {
   $("rc").innerHTML = [1, 2, 3, 4].map(i => `
-    <div class="bar-label"><span>Channel ${i}${i <= 2 ? ` · servo ${i}` : ""}</span><span id="rc${i}">–</span></div>
+    <div class="bar-label"><span>Channel ${i}${i <= 2 ? ` · servo ${i}` : i === 3 ? " · mode switch" : ""}</span><span id="rc${i}">–</span></div>
     <div class="bar"><i id="rcb${i}" style="width:0"></i></div>`).join("");
 }
 function onRc(rc) {
@@ -680,7 +704,7 @@ function showViewer(name, text) {
   $("v-stats").innerHTML = stats.map(([k, v]) => `<div class="stat"><b>${k}</b><span>${v}</span></div>`).join("");
 
   const sel = $("v-col"); sel.innerHTML = "";
-  head.forEach((h, i) => { if (!["t_ms", "utc", "event", "phase"].includes(h)) { const o = document.createElement("option"); o.value = i; o.textContent = h; sel.appendChild(o); } });
+  head.forEach((h, i) => { if (!["t_ms", "utc", "event", "phase", "servo_mode"].includes(h)) { const o = document.createElement("option"); o.value = i; o.textContent = h; sel.appendChild(o); } });
   if (ai >= 0) sel.value = ai;
   plotColumn();
 
@@ -825,6 +849,35 @@ $("btn-replay").onclick = async () => {
     el("ul", { class: "hint", style: "padding-left:18px;margin:6px 0 0" }, ...r.summary.map(s => el("li", {}, s))));
 };
 loadLogs();
+
+// ---------- servo control (firmware 1.6+) ----------
+function setServoAllow(allow) {
+  const known = allow === "manual" || allow === "auto";
+  $("srv-box").classList.toggle("hidden", !known); $("srv-old").classList.toggle("hidden", known || !info);
+  if (!known) return;
+  $("sm-manual").setAttribute("aria-checked", allow === "manual");
+  $("sm-auto").setAttribute("aria-checked", allow === "auto");
+}
+function onServo(s) {
+  if (!s) return;
+  setServoAllow(s.allow);
+  $("srv-mode").textContent = s.mode === "AUTO" ? "AUTO (payload)" : "MANUAL (ER4 sticks)";
+  $("srv-mode").className = "mode-pill" + (s.mode === "AUTO" ? " auto" : "");
+  $("srv-sw").textContent = s.sw === "none" ? "not seen yet" : s.sw + (s.link ? "" : " (link lost, keeping it)");
+  const o = v => v ? v + " µs" : "stopped (no pulses)";
+  $("srv-o1").textContent = o(s.out[0]); $("srv-o2").textContent = o(s.out[1]);
+}
+async function setServoMode(mode) {
+  if (mode === "AUTO" && !confirm("Allow automatic servo control?\n\nIn flight, when the transmitter's CH3 switch is set to auto, " +
+      "the payload will drive the servos itself. Flipping CH3 to manual always gives control back to the sticks.\n\n" +
+      "(Steering isn't written yet, so for now \"auto\" just keeps the servos stopped.)")) return;
+  const r = await cmd("SERVO MODE " + mode);
+  if (r.type === "ok") { setServoAllow(r.allow); toast(r.allow === "auto" ? "Auto allowed (CH3 switch chooses)" : "Manual only: the servos follow the ER4"); }
+}
+$("sm-manual").onclick = () => setServoMode("MANUAL");
+$("sm-auto").onclick = () => setServoMode("AUTO");
+for (const [id, other] of [["sm-manual", "sm-auto"], ["sm-auto", "sm-manual"]])  // arrow keys move between the two options
+  $(id).addEventListener("keydown", e => { if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) { e.preventDefault(); $(other).focus(); } });
 
 // ---------- buttons ----------
 $("btn-rec").onclick = async () => {

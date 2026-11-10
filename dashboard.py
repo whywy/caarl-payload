@@ -42,6 +42,7 @@ ALLOWED = [
     re.compile(r"LOG START"),
     re.compile(r"LOG STOP"),
     re.compile(r"CAL GYRO"),
+    re.compile(r"SERVO MODE (?:MANUAL|AUTO)"),
     re.compile(r"MARK [^\r\n,\"\\]{1,60}"),
     re.compile(r"DEL /[A-Za-z0-9_.\-]{1,39}"),
 ]

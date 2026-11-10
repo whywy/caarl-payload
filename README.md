@@ -57,7 +57,7 @@ build on it.
 | Motion | Live X/Y/Z acceleration (g) and rotation rate (°/s), last 30 seconds |
 | Altitude | Height above the spot where you pressed **Set zero here**, plus pressure and temperatures |
 | GPS | Fix, satellites, position (with a map link once it has a fix), speed, accuracy, UTC time |
-| Receiver | CH1–CH4 pulse widths as bars, 1000–2000 µs. 1500 µs = parachute winches stopped |
+| Receiver & servos | CH1–CH4 pulse widths as bars, 1000–2000 µs (1500 µs = parachute winches stopped). **Servo control** switch: "Manual only (ER4)" (default) or "Auto allowed", saved on the payload; shows who is driving the servos, the CH3 switch and each servo output |
 | SD card | **Start/Stop recording**, notes, and the card's file list with **Open**, **Save** and **Delete** |
 | Simulation & replay | **Run simulation** (the 6 made-up flights and their checks; open any of them in the viewer) and **Replay** any log with your own detector settings. Runs the C++ tools on this computer, so it needs `g++` (`sudo apt install g++`); they're built into `build/` the first time |
 
@@ -96,6 +96,7 @@ Monitor with it, set the speed to 921600 and you'll see the raw data lines.
 | I²C bus (IMU 0x68, barometer 0x77, GPS 0x42) | SDA = GPIO21, SCL = GPIO22 |
 | SD card (SPI) | CS = 5, SCK = 18, MOSI = 23, MISO = 19 |
 | ER4 receiver CH1–CH4 | GPIO36, 39, 34, 35 |
+| Servo 1 / servo 2 signal (firmware 1.6+) | GPIO25, GPIO26 |
 
 Full wiring: `~/School/Avionics/perfboard/WIRING.md` and `PERFBOARD-BUILD-GUIDE.md`.
 
@@ -110,6 +111,14 @@ vertical speed from the barometer, + = up) · `event`
 They open straight in LibreOffice Calc or any spreadsheet.
 
 ## Good to know
+- **Servo control (firmware 1.6+).** The servo signals come from the ESP32 (GPIO25/26), which needs a 2-wire change
+  on the perfboard (`~/School/Avionics/perfboard/WIRING.md` → "Servo control through the ESP32"). Who drives them:
+  - **"Manual only"** (default, set on the dashboard, saved on the payload): the servos follow the ER4 sticks (CH1, CH2).
+  - **"Auto allowed"**: a 2-position switch on the transmitter mapped to **CH3** picks manual (low) or auto (high).
+    Flipping CH3 to manual always hands control back to the sticks. If the radio link drops, it keeps the last
+    switch position. Steering isn't written yet, so auto = servos stopped.
+  - No signal, or the ESP32 resets: the servos get no pulses and stop. Mode changes go in the `event` column, and
+    every row records `servo_mode`, `srv1_us`, `srv2_us`. Rules and tests: `servo_mode.h`, `tests/servo_mode_test.cpp`.
 - **Recording starts by itself at power-up** (firmware 1.1+), into a new `LOGnnn.CSV` each time, so it records
   with no computer attached. The first row's `event` column says `auto start at power-up`. Every power-up makes a
   new file (USB bench sessions too), so delete old ones from the dashboard now and then. To turn this off, set
