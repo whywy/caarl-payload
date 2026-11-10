@@ -59,6 +59,7 @@ build on it.
 | GPS | Fix, satellites, position (with a map link once it has a fix), speed, accuracy, UTC time |
 | Receiver | CH1–CH4 pulse widths as bars, 1000–2000 µs. 1500 µs = parachute winches stopped |
 | SD card | **Start/Stop recording**, notes, and the card's file list with **Open**, **Save** and **Delete** |
+| Simulation & replay | **Run simulation** (the 6 made-up flights and their checks; open any of them in the viewer) and **Replay** any log with your own detector settings. Runs the C++ tools on this computer, so it needs `g++` (`sudo apt install g++`); they're built into `build/` the first time |
 
 **Recording** makes a new `LOGnnn.CSV` on the card each time, with 20 rows a second. **Add note** writes
 your text into the `event` column of the next row, so you can find moments later ("lifted board", "dropped").
@@ -162,6 +163,9 @@ soft opening, late opening, chute failure, a bump on the pad, and extra noise. I
 cd ~/Projects/caarl-payload && g++ -std=c++17 -O1 -Wall -Wno-format-security -o /tmp/phase_sim tests/phase_sim.cpp && /tmp/phase_sim
 ```
 After a real flight, compare the `phase` column with what you saw, and adjust the thresholds if needed.
+
+**Easiest: use the dashboard's "Simulation & replay" card** for both of these. It runs the same tools and
+shows the results on the page. From a terminal instead:
 
 **After a flight, replay its log with different settings** (same detector code, nothing to flash):
 ```bash

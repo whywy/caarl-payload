@@ -105,6 +105,7 @@ int main(int argc, char **argv) {
     auto ev = run(*f, &apo, &apoMs, &landMs, csv);
     if (csv) fclose(csv);
     printf("\n== %s  (true apogee %.0f m at %.1f s)\n", f->name, apo, apoMs / 1000.0);
+    if (csvDir) printf("  log: %s.csv\n", files[idx - 1]);
     for (auto &e : ev) printf("  %6.2f s  %s\n", e.t / 1000.0, e.note.c_str());
     const Event *L = find(ev, PH_BOOST), *A = find(ev, PH_DESCENT), *C = find(ev, PH_CHUTE), *S = find(ev, PH_SETTLED), *G = find(ev, PH_LANDED);
     if (!f->fly) { check(ev.empty(), "no phase change on the pad"); continue; }

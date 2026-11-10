@@ -20,6 +20,8 @@ import os
 import queue
 import re
 import select
+import shutil
+import subprocess
 import sys
 import termios
 import threading
@@ -44,6 +46,130 @@ ALLOWED = [
     re.compile(r"DEL /[A-Za-z0-9_.\-]{1,39}"),
 ]
 FILE_NAME = re.compile(r"/[A-Za-z0-9_.\-]{1,39}")
+
+# ---------- desk simulation and log replay ----------
+# The page never gets its own copy of the flight phase detector: these run the real C++ tools
+# (tests/phase_sim.cpp, tools/phase_replay.cpp), which use firmware/payload-dashboard/flight_phase.h,
+# so what the page shows is exactly what the payload would decide.
+BUILD_DIR = os.path.join(HERE, "build")          # git ignores build/
+SIM_DIR = os.path.join(BUILD_DIR, "simlogs")
+TOOL_SOURCES = {"phase_sim": "tests/phase_sim.cpp", "phase_replay": "tools/phase_replay.cpp"}
+DETECTOR = "firmware/payload-dashboard/flight_phase.h"
+LOG_NAME = re.compile(r"[A-Za-z0-9_.\-]{1,40}\.(?:csv|CSV)")
+SETTING_VALUE = re.compile(r"-?\d{1,7}(?:\.\d{1,6})?")
+tool_lock = threading.Lock()
+
+
+def build_tool(name):
+    """Compile a tool into build/ if it's missing or older than its source or the detector."""
+    src = os.path.join(HERE, TOOL_SOURCES[name])
+    exe = os.path.join(BUILD_DIR, name)
+    newest = max(os.path.getmtime(src), os.path.getmtime(os.path.join(HERE, DETECTOR)))
+    if os.path.exists(exe) and os.path.getmtime(exe) >= newest:
+        return exe
+    gxx = shutil.which("g++")
+    if not gxx:
+        raise RuntimeError("The C++ compiler (g++) isn't installed. On Ubuntu or Zorin: sudo apt install g++")
+    os.makedirs(BUILD_DIR, exist_ok=True)
+    r = subprocess.run([gxx, "-std=c++17", "-O2", "-Wall", "-Wno-format-security", "-o", exe, src],
+                       capture_output=True, text=True, timeout=180)
+    if r.returncode:
+        raise RuntimeError(f"Couldn't build {name}:\n{r.stderr[-1500:]}")
+    return exe
+
+
+def run_simulation():
+    """Run every simulated flight; returns scenarios with their phase changes and checks."""
+    with tool_lock:
+        exe = build_tool("phase_sim")
+        os.makedirs(SIM_DIR, exist_ok=True)
+        r = subprocess.run([exe, "--csv", SIM_DIR], capture_output=True, text=True, timeout=120)
+    scenarios, current = [], None
+    for line in r.stdout.splitlines():
+        m = re.match(r"== (.+?)  \(true apogee (\d+) m at ([\d.]+) s\)", line)
+        if m:
+            current = {"name": m[1], "apogee_m": int(m[2]), "apogee_s": float(m[3]), "log": None,
+                       "events": [], "checks": []}
+            scenarios.append(current)
+        elif current is None:
+            continue
+        elif (m := re.match(r"\s+log: (\S+)", line)):
+            current["log"] = m[1]
+        elif (m := re.match(r"\s+\[(PASS|FAIL)\] (.*)", line)):
+            current["checks"].append({"ok": m[1] == "PASS", "text": m[2]})
+        elif (m := re.match(r"\s+([\d.]+) s  (.*)", line)):
+            current["events"].append({"t": float(m[1]), "text": m[2]})
+    return {"type": "sim", "ok": r.returncode == 0, "scenarios": scenarios,
+            "result": r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "no output"}
+
+
+def replay_settings():
+    """The detector's settings, defaults and meanings, straight from the replay tool."""
+    with tool_lock:
+        exe = build_tool("phase_replay")
+        r = subprocess.run([exe, "--settings"], capture_output=True, text=True, timeout=30)
+    out = []
+    for line in r.stdout.splitlines()[1:]:
+        parts = line.split(None, 2)
+        if len(parts) == 3:
+            out.append({"name": parts[0], "default": parts[1], "meaning": parts[2]})
+    return out
+
+
+def list_logs():
+    def csvs(folder):
+        if not os.path.isdir(folder):
+            return []
+        return sorted(f for f in os.listdir(folder) if LOG_NAME.fullmatch(f))
+    return {"type": "logs", "downloads": csvs(DOWNLOAD_DIR), "sim": csvs(SIM_DIR)}
+
+
+def log_path(source, name):
+    """Only plain file names inside downloads/ or build/simlogs/ are allowed."""
+    folder = {"downloads": DOWNLOAD_DIR, "sim": SIM_DIR}.get(source)
+    if not folder or not isinstance(name, str) or not LOG_NAME.fullmatch(name):
+        raise ValueError("bad log name")
+    path = os.path.join(folder, name)
+    if os.path.dirname(os.path.realpath(path)) != os.path.realpath(folder) or not os.path.isfile(path):
+        raise ValueError("log not found")
+    return path
+
+
+def run_replay(source, name, settings):
+    path = log_path(source, name)
+    if settings is None:
+        settings = {}
+    if not isinstance(settings, dict) or len(settings) > 50:
+        raise ValueError("settings must be a list of NAME: value pairs")
+    known = {s["name"] for s in replay_settings()}
+    args = []
+    for key, value in settings.items():
+        value = str(value).strip()
+        if value == "":
+            continue
+        if key not in known or not SETTING_VALUE.fullmatch(value):
+            raise ValueError(f"bad setting {key}={value}")
+        args.append(f"{key}={value}")
+    with tool_lock:
+        exe = build_tool("phase_replay")
+        r = subprocess.run([exe, path, *args], capture_output=True, text=True, timeout=60)
+    if r.returncode:
+        raise RuntimeError(r.stderr.strip() or "replay failed")
+    result = {"type": "replay", "log": name, "settings": args, "replayed": [], "recorded": None, "summary": []}
+    section = None
+    for line in r.stdout.splitlines():
+        if line.startswith("Replayed"):
+            section = "replayed"
+        elif line.startswith("Recorded"):
+            section, result["recorded"] = "recorded", []
+        elif line.startswith("Summary"):
+            section = "summary"
+            result["summary"].append(line[len("Summary: "):])
+        elif section == "summary" and line.strip():
+            result["summary"].append(line.strip())
+        elif section in ("replayed", "recorded") and (m := re.match(r"\s+([\d.]+) s  (.*)", line)):
+            result[section].append({"t": float(m[1]), "text": m[2]})
+    return result
 
 
 class Board:
@@ -282,6 +408,25 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif url.path == "/events":
             self._events()
+        elif url.path == "/api/logs":
+            self._json(list_logs())
+        elif url.path == "/api/settings":
+            try:
+                self._json({"type": "settings", "settings": replay_settings()})
+            except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+                self._json({"type": "err", "msg": str(e)}, 500)
+        elif url.path == "/api/simfile":
+            try:
+                path = log_path("sim", parse_qs(url.query).get("name", [""])[0])
+            except ValueError as e:
+                return self._json({"type": "err", "msg": str(e)}, 400)
+            with open(path, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
         elif url.path == "/api/file":
             name = parse_qs(url.query).get("name", [""])[0]
             if not FILE_NAME.fullmatch(name):
@@ -302,15 +447,42 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def _same_origin(self):
+        """Refuse requests that another website in the same browser tries to send here."""
+        host = self.headers.get("Host", "")
+        origin = self.headers.get("Origin")
+        ok_hosts = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
+        return host in ok_hosts and (origin is None or origin.split("://", 1)[-1] in ok_hosts)
+
     def do_POST(self):
-        if urlparse(self.path).path != "/api/cmd":
+        path = urlparse(self.path).path
+        if path not in ("/api/cmd", "/api/sim", "/api/replay"):
             return self.send_error(404)
+        if not self._same_origin():
+            return self._json({"type": "err", "msg": "request not from the dashboard page"}, 403)
         try:
             length = int(self.headers.get("Content-Length", 0))
-            cmd = json.loads(self.rfile.read(length) or b"{}").get("cmd", "")
+            if length > 10000:
+                raise ValueError("too big")
+            body = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(body, dict):
+                raise ValueError("not an object")
         except (ValueError, json.JSONDecodeError):
             return self._json({"type": "err", "msg": "bad request"}, 400)
-        if not any(p.fullmatch(cmd) for p in ALLOWED):
+        if path == "/api/sim":
+            try:
+                return self._json(run_simulation())
+            except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+                return self._json({"type": "err", "msg": str(e)}, 500)
+        if path == "/api/replay":
+            try:
+                return self._json(run_replay(body.get("source"), body.get("name"), body.get("settings")))
+            except ValueError as e:
+                return self._json({"type": "err", "msg": str(e)}, 400)
+            except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+                return self._json({"type": "err", "msg": str(e)}, 500)
+        cmd = body.get("cmd", "")
+        if not isinstance(cmd, str) or not any(p.fullmatch(cmd) for p in ALLOWED):
             return self._json({"type": "err", "msg": "command not allowed"}, 400)
         try:
             self._json(board.command(cmd, timeout=10 if cmd == "CAL GYRO" else 6))

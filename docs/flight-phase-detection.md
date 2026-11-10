@@ -387,6 +387,11 @@ Runs the **same** `flight_phase.h` over a recorded log, with any settings you ch
 each phase change would have happened next to what the payload actually recorded. One flight can be
 re-tuned as many times as you like without flying again.
 
+**From the dashboard:** the "Simulation & replay" card does the same thing. Pick a log (simulated flights,
+or any file you've opened from the card), open "Detector settings", change values, and press Replay. The
+results show next to what the payload recorded. `dashboard.py` builds and runs these same tools (into
+`build/`, needs `g++`), so there is still only one copy of the detector.
+
 ```bash
 cd ~/Projects/caarl-payload
 g++ -std=c++17 -O2 -Wall -Wno-format-security -o /tmp/phase_replay tools/phase_replay.cpp   # build once

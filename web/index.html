@@ -132,6 +132,22 @@ td.acts button { margin-left: 4px; }
   .card { padding: var(--s4); } .card h2 { letter-spacing: .08em; } }
 @media (pointer: coarse) { button, select, input[type=text] { min-height: 44px; } button.small { min-width: 44px; } }
 .err { color: var(--bad); font-size: 13px; margin: 8px 0 0; }
+h3.sub { margin: 0 0 var(--s2); font: 600 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2) var(--s4); margin: var(--s3) 0; }
+.settings label { display: flex; flex-direction: column; gap: 2px; font: 11px var(--mono); color: var(--muted-strong); letter-spacing: .03em; }
+.settings input { font: 13px var(--mono); padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255, 255, 255, .04); color: var(--ink); }
+.settings input.changed { border-color: var(--accent); }
+.settings input::placeholder, input[type=text]::placeholder { color: var(--muted); opacity: 1; }
+details > summary { cursor: pointer; padding: 6px 0; }
+details.scen { border-top: 1px solid var(--line); padding: 2px 0; }
+details.scen summary { display: flex; gap: var(--s2); align-items: baseline; }
+details.scen summary .n { margin-left: auto; font: 12px var(--mono); color: var(--muted-strong); white-space: nowrap; }
+.ok { color: var(--good); } .no { color: var(--bad); }
+ol.ev { margin: var(--s2) 0; padding-left: 0; list-style: none; font: 12.5px/1.55 var(--mono); }
+ol.ev li { display: grid; grid-template-columns: 5.5em 1fr; gap: var(--s2); }
+ol.ev li b { color: var(--accent); font-weight: 600; text-align: right; }
+.cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s4); }
+@media (max-width: 760px) { .settings, .cols { grid-template-columns: minmax(0, 1fr); } }
 select { font: inherit; font-size: 14px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 a { color: var(--accent); }
 </style>
@@ -265,6 +281,35 @@ a { color: var(--accent); }
         </table>
         <div class="progress hidden" id="dl-progress"><i></i></div>
         <p class="hint" id="dl-note">"Open" reads a file back from the card and plots it below. Copies are also saved to the <code>downloads</code> folder next to dashboard.py.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Simulation & replay (runs the real C++ tools on this computer) -->
+  <section class="card full" id="simcard">
+    <h2>Simulation &amp; replay <span class="hint" style="margin:0;text-transform:none;letter-spacing:0;font-family:inherit">runs on this computer · same detector code as the payload</span></h2>
+    <div class="split">
+      <div>
+        <h3 class="sub">Desk simulation</h3>
+        <p class="hint" style="margin:0 0 12px">Six made-up flights with sensor noise: normal, soft opening, late opening, chute failure,
+          a bump on the pad, and extra noise. Each one is checked against what the detector must (and must not) do.</p>
+        <div class="row"><button class="primary" id="btn-sim">Run simulation</button>
+          <span class="hint" style="margin:0" id="sim-status" role="status"></span></div>
+        <div id="sim-results" style="margin-top:12px"></div>
+      </div>
+      <div>
+        <h3 class="sub">Replay a log with other settings</h3>
+        <p class="hint" style="margin:0 0 12px">Runs a recorded flight (or a simulated one) through the detector with the settings below,
+          and lists where each phase would change next to what the payload actually recorded. Logs from the card appear here
+          once you've opened them above.</p>
+        <div class="row"><label for="rp-log">Log</label><select id="rp-log" style="flex:1;min-width:0"></select>
+          <button class="small" id="rp-refresh">Refresh</button></div>
+        <details id="rp-set" style="margin-top:8px"><summary>Detector settings <span class="hint" id="rp-changed" style="margin:0"></span></summary>
+          <div class="settings" id="rp-settings"></div>
+          <button class="small" id="rp-reset">Reset to defaults</button></details>
+        <div class="row" style="margin-top:10px"><button class="primary" id="btn-replay">Replay</button>
+          <span class="hint" style="margin:0" id="rp-status" role="status"></span></div>
+        <div id="rp-results" style="margin-top:12px"></div>
       </div>
     </div>
   </section>
@@ -595,6 +640,7 @@ async function openFile(name, saveOnly) {
   const text = await fetchFile(name);
   if (text === null) return;
   toast(`Got ${name.slice(1)} (${bytes(text.length)})`);
+  loadLogs();  // the copy in downloads/ can now be replayed
   if (saveOnly) { saveText(name, text); return; }
   viewerText = text; viewerName = name; showViewer(name, text);
 }
@@ -677,6 +723,108 @@ function plotColumn() {
   const t0 = parseFloat(parsed.rows[0]?.[ti]) || 0;
   charts.file.setAll(parsed.rows.map(r => [(parseFloat(r[ti]) - t0) / 1000, r[i] === "" ? NaN : parseFloat(r[i])]));
 }
+
+// ---------- simulation & replay (dashboard.py runs tests/phase_sim and tools/phase_replay) ----------
+async function api(path, body) {
+  try {
+    const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return await r.json();
+  } catch (e) { return { type: "err", msg: "The dashboard program isn't running." }; }
+}
+const el = (tag, attrs = {}, ...kids) => {  // small DOM builder (text is never parsed as HTML)
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === "class" ? e.className = v : e.setAttribute(k, v);
+  for (const k of kids) e.append(k);
+  return e;
+};
+const evList = evs => evs.length ? el("ol", { class: "ev" }, ...evs.map(e => el("li", {}, el("b", {}, e.t.toFixed(2) + " s"), e.text)))
+                                 : el("p", { class: "hint" }, "No phase changes (stayed in PAD).");
+
+async function loadLogs(select) {
+  const r = await api("/api/logs");
+  if (r.type !== "logs") return;
+  const sel = $("rp-log"), keep = select || sel.value;
+  sel.innerHTML = "";
+  const group = (label, source, names) => {
+    if (!names.length) return;
+    const g = el("optgroup", { label });
+    for (const n of names) { const o = el("option", { value: source + "|" + n }, n); g.append(o); }
+    sel.append(g);
+  };
+  group("Simulated flights", "sim", r.sim);
+  group("Saved from the card (downloads)", "downloads", r.downloads);
+  if (!sel.options.length) sel.append(el("option", { value: "" }, "No logs yet: run the simulation or open a file above"));
+  if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
+}
+
+let settingsLoaded = false;
+async function loadSettings() {
+  if (settingsLoaded) return;
+  const r = await api("/api/settings");
+  if (r.type !== "settings") { $("rp-status").textContent = "⚠ " + r.msg; return; }
+  settingsLoaded = true;
+  $("rp-settings").replaceChildren(...r.settings.map(s => {
+    const inp = el("input", { type: "text", inputmode: "decimal", placeholder: s.default, "data-name": s.name, title: s.meaning, "aria-describedby": "rp-changed" });
+    inp.addEventListener("input", countChanged);
+    return el("label", { title: s.meaning }, s.name, inp);
+  }));
+}
+function countChanged() {
+  const n = [...$("rp-settings").querySelectorAll("input")].filter(i => { i.classList.toggle("changed", i.value.trim() !== ""); return i.value.trim() !== ""; }).length;
+  $("rp-changed").textContent = n ? `(${n} changed)` : "(all defaults)";
+}
+$("rp-set").addEventListener("toggle", () => { if ($("rp-set").open) loadSettings(); });
+$("rp-reset").onclick = () => { for (const i of $("rp-settings").querySelectorAll("input")) i.value = ""; countChanged(); };
+$("rp-refresh").onclick = () => loadLogs();
+
+$("btn-sim").onclick = async () => {
+  $("btn-sim").disabled = true;
+  $("sim-status").textContent = "Running… (the first run builds the tool, which takes a few seconds)";
+  const r = await api("/api/sim", {});
+  $("btn-sim").disabled = false;
+  if (r.type !== "sim") { $("sim-status").textContent = "⚠ " + r.msg; return; }
+  $("sim-status").textContent = r.ok ? "✓ " + r.result : "✗ " + r.result;
+  $("sim-status").className = r.ok ? "ok" : "no";
+  $("sim-results").replaceChildren(...r.scenarios.map(s => {
+    const passed = s.checks.filter(c => c.ok).length, ok = passed === s.checks.length;
+    const open = el("button", { class: "small" }, "Open log"), replay = el("button", { class: "small" }, "Replay this");
+    open.onclick = async () => {
+      const resp = await fetch("/api/simfile?name=" + encodeURIComponent(s.log));
+      if (!resp.ok) { toast("⚠ Couldn't read " + s.log); return; }
+      viewerText = await resp.text(); viewerName = "/" + s.log; showViewer(viewerName, viewerText);
+    };
+    replay.onclick = async () => { await loadLogs("sim|" + s.log); $("rp-log").focus(); $("rp-log").scrollIntoView({ block: "center" }); };
+    return el("details", { class: "scen" },
+      el("summary", {}, el("span", { class: ok ? "ok" : "no", "aria-hidden": "true" }, ok ? "✓" : "✗"), s.name,
+         el("span", { class: "n" }, `${passed}/${s.checks.length} checks${ok ? "" : " · FAILED"}`)),
+      el("p", { class: "hint", style: "margin:4px 0 0" }, s.apogee_m ? `True apogee ${s.apogee_m} m at ${s.apogee_s} s. The detector reported:` : "Stays on the pad. The detector reported:"),
+      evList(s.events),
+      el("ul", { class: "hint", style: "padding-left:18px;margin:6px 0" }, ...s.checks.map(c => el("li", { class: c.ok ? "" : "no" }, (c.ok ? "Pass: " : "FAIL: ") + c.text))),
+      el("div", { class: "row", style: "gap:8px;margin-bottom:8px" }, open, replay));
+  }));
+  loadLogs();
+};
+
+$("btn-replay").onclick = async () => {
+  const [source, name] = ($("rp-log").value || "").split("|");
+  if (!name) { $("rp-status").textContent = "Pick a log first."; return; }
+  const settings = {};
+  for (const i of $("rp-settings").querySelectorAll("input")) if (i.value.trim()) settings[i.dataset.name] = i.value.trim();
+  $("btn-replay").disabled = true; $("rp-status").className = "hint"; $("rp-status").textContent = "Replaying…";
+  const r = await api("/api/replay", { source, name, settings });
+  $("btn-replay").disabled = false;
+  if (r.type !== "replay") { $("rp-status").textContent = "⚠ " + r.msg; return; }
+  $("rp-status").textContent = `${r.log} · ${r.settings.length ? r.settings.join(" ") : "default settings"}`;
+  const same = r.recorded && JSON.stringify(r.recorded) === JSON.stringify(r.replayed);
+  $("rp-results").replaceChildren(
+    el("div", { class: "cols" },
+      el("div", {}, el("h3", { class: "sub" }, "With these settings"), evList(r.replayed)),
+      el("div", {}, el("h3", { class: "sub" }, "Recorded by the payload"),
+        r.recorded ? evList(r.recorded) : el("p", { class: "hint" }, "This log was recorded before firmware 1.5, so it has no phases to compare."))),
+    r.recorded ? el("p", { class: same ? "ok" : "hint", style: "font-size:13px;margin:6px 0" }, same ? "✓ Identical to what the payload decided." : "Differs from what the payload decided (compare the two lists).") : "",
+    el("ul", { class: "hint", style: "padding-left:18px;margin:6px 0 0" }, ...r.summary.map(s => el("li", {}, s))));
+};
+loadLogs();
 
 // ---------- buttons ----------
 $("btn-rec").onclick = async () => {
