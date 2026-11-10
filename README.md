@@ -6,6 +6,9 @@
 This is the first version of the payload's software. Later versions (flight logic, parachute steering)
 build on it.
 
+**What's left to do** (parts, wiring, tests): [`TODO.md`](TODO.md). AI assistants working here follow
+[`AGENTS.md`](AGENTS.md), which tells them to keep that list up to date.
+
 ---
 
 ## ⏩ Forgot how to use it? Start here
